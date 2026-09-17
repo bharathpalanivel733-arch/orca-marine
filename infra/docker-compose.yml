@@ -1,0 +1,63 @@
+# ORCA — local development stack (PLAN.md Phase 0.2)
+# Usage: pnpm db:up   (or: docker compose -f infra/docker-compose.yml up -d)
+name: orca
+
+services:
+  db:
+    # timescaledb-ha bundles PostGIS, pgvector and TimescaleDB on PostgreSQL 16,
+    # which is exactly the trio PLAN.md Phase 0.2 requires from one database.
+    image: timescale/timescaledb-ha:pg16
+    container_name: orca-db
+    environment:
+      POSTGRES_USER: orca
+      POSTGRES_PASSWORD: orca
+      POSTGRES_DB: orca
+    ports:
+      - "5432:5432"
+    volumes:
+      - orca-db-data:/home/postgres/pgdata/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orca -d orca"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: orca-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - orca-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    # Object cache for subsetted Zarr/COG fields (Phase 1.10) and the TTS audio
+    # cache (Phase 7.7). S3-compatible, so production can swap in GCS/S3 unchanged.
+    image: minio/minio:latest
+    container_name: orca-minio
+    environment:
+      MINIO_ROOT_USER: orca-minio
+      MINIO_ROOT_PASSWORD: orca-minio-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: ["server", "/data", "--console-address", ":9001"]
+    volumes:
+      - orca-minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  orca-db-data:
+  orca-redis-data:
+  orca-minio-data:

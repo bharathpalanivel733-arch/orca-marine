@@ -1,0 +1,17 @@
+{
+  "name": "@orca/schemas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript types generated from the ORCA Pydantic contracts.",
+  "types": "./generated/types.ts",
+  "scripts": {
+    "generate": "python export_schemas.py && node generate-types.mjs"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^15.0.4"
+  },
+  "exports": {
+    "./generated/types": "./generated/types.ts",
+    ".": "./generated/types.ts"
+  }
+}

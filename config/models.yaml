@@ -1,0 +1,69 @@
+# ORCA — LLM routing table (PLAN.md §1.1, Phase 0.3)
+#
+# Role -> (provider, model, settings). A model swap is a config edit, never a code edit.
+# Phase 0 only LOADS and VALIDATES this file; no provider is called until Phase 5.
+#
+# Governing rule (PLAN.md §1, METHODS.md §1): the LLM never invents a safety number.
+# Safety scores, geofence verdicts, route costs and every other numeric value come from
+# deterministic kernels. LLM roles below are limited to language handling, planning,
+# critique and narration over numbers the kernels already computed.
+
+version: 1
+
+defaults:
+  timeout_seconds: 60
+  max_retries: 2
+
+roles:
+  planner:
+    description: "Intent -> task DAG, tool selection, re-planning under a cost budget."
+    provider: anthropic
+    model: claude-opus-5
+    thinking: adaptive
+    effort: high
+    max_tokens: 16000
+    structured_output: true
+
+  verifier:
+    description: "Adversarial critique, conflict detection, evidence-sufficiency gating. Fresh context."
+    provider: anthropic
+    model: claude-opus-5
+    thinking: adaptive
+    effort: high
+    max_tokens: 16000
+    structured_output: true
+    isolated_context: true
+
+  synthesizer:
+    description: "Explanation and evidence-fusion narrative over kernel-computed numbers."
+    provider: anthropic
+    model: claude-sonnet-5
+    thinking: adaptive
+    effort: medium
+    max_tokens: 8000
+    structured_output: false
+
+  extractor:
+    description: "Language/code-mix detection, intent + entity extraction. Runs every turn."
+    provider: anthropic
+    model: claude-haiku-4-5
+    thinking: disabled
+    effort: null
+    max_tokens: 1024
+    structured_output: true
+
+fallbacks:
+  # Stage insurance (PLAN.md §1.1): one env flag moves narration + extraction to Groq's
+  # high-throughput endpoint. Declared openly as a fallback, never as the primary.
+  enabled: false
+  provider: groq
+  roles:
+    synthesizer: llama-3.3-70b-versatile
+    extractor: llama-3.3-70b-versatile
+
+budgets:
+  # Planner cost budget (PLAN.md Phase 5.3 / M4). Enforced in Phase 5; recorded from Phase 0.
+  per_query:
+    max_total_tokens: 120000
+    max_wall_clock_seconds: 45
+    max_tool_calls: 24

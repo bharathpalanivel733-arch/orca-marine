@@ -1,0 +1,23 @@
+{
+  "name": "orca-marine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ORCA \u2014 agentic marine decision support (SIH26176, Team OCEAN-IQ).",
+  "packageManager": "pnpm@11.18.0",
+  "scripts": {
+    "dev": "pnpm db:up && pnpm --filter @orca/web dev",
+    "db:up": "docker compose -f infra/docker-compose.yml up -d --wait",
+    "db:down": "docker compose -f infra/docker-compose.yml down",
+    "db:reset": "docker compose -f infra/docker-compose.yml down -v && pnpm db:up",
+    "db:verify": "bash scripts/verify-stack.sh",
+    "api:dev": "python -m uvicorn orca_api.main:app --reload --app-dir services/api",
+    "schemas:generate": "pnpm --filter @orca/schemas generate",
+    "lint": "pnpm --filter @orca/web lint && python -m ruff check services packages",
+    "format": "python -m ruff format services packages",
+    "typecheck": "pnpm --filter @orca/web typecheck && python -m mypy services/api/orca_api packages/schemas/orca_schemas",
+    "test": "python -m pytest services/api/tests packages/schemas/tests services/agents/tests services/ingest/tests -q",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test",
+    "setup:py": "python -m venv .venv && python -c \"import subprocess,sys,os; py=os.path.join('.venv','Scripts','python.exe') if os.name=='nt' else os.path.join('.venv','bin','python'); subprocess.check_call([py,'-m','pip','install','-e','packages/schemas','-e','services/api[dev,otel]','-e','services/agents','-e','services/ingest'])\""
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "description": "Identity of a single end-to-end run, propagated to every service and log line.",
+  "properties": {
+    "run_id": {
+      "description": "Unique id for this run.",
+      "type": "string"
+    },
+    "parent_run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Set when this run was spawned by another run."
+    },
+    "service": {
+      "description": "Service that created or received the run context.",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "service"
+  ],
+  "title": "RunContext",
+  "type": "object"
+}

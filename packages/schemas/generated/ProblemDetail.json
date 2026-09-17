@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "description": "Error payload (RFC 9457 shape) carrying the run id for support and replay.",
+  "properties": {
+    "type": {
+      "default": "about:blank",
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "status": {
+      "maximum": 599,
+      "minimum": 100,
+      "type": "integer"
+    },
+    "detail": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "title",
+    "status"
+  ],
+  "title": "ProblemDetail",
+  "type": "object"
+}

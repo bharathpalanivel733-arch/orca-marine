@@ -1,0 +1,13 @@
+[project]
+name = "orca-schemas"
+version = "0.1.0"
+description = "Shared ORCA data contracts (Pydantic source of truth, exported to JSON Schema and TypeScript)."
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.9,<3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["orca_schemas"]

@@ -1,0 +1,11 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  unrs-resolver: set this to true or false
+
+# Allowlisted native build, so `pnpm install` never stops to ask (CI-safe).
+# unrs-resolver is the native module resolver pulled in by eslint-config-next.
+onlyBuiltDependencies:
+  - unrs-resolver

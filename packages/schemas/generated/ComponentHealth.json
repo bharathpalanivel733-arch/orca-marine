@@ -1,0 +1,53 @@
+{
+  "$defs": {
+    "HealthStatus": {
+      "description": "Service or dependency condition.\n\n``degraded`` is a first-class state, not a soft failure: ORCA is designed to keep\noperating with missing or stale inputs and to say so (ARCHITECTURE.md \u00a77).",
+      "enum": [
+        "ok",
+        "degraded",
+        "down"
+      ],
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Condition of one dependency (database, cache, object store, upstream feed).",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/HealthStatus"
+    },
+    "detail": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Human-readable reason, required when not ok."
+    },
+    "latency_ms": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "name",
+    "status"
+  ],
+  "title": "ComponentHealth",
+  "type": "object"
+}
