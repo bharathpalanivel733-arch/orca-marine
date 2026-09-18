@@ -53,27 +53,44 @@ or LLM provider is called by any code in this commit.
 | API runtime | `uvicorn orca_api.main:app` + curl | `/healthz` → `{"status":"ok"}`; `X-Run-Id: orca_7ee39b19…` minted; inbound `X-Run-Id: orca_manual_check` preserved unchanged; JSON logs carry the run id on both request lines |
 | Degradation | `curl /readyz` with no stack running | `status: "down"`, each of postgres/redis/object-store reported `down` with `"tcp connect timed out after 2.0s"` — no false "ok" |
 
+### Dev stack — VERIFIED 2026-09-18 (second attempt, after the host was fixed)
+
+The WSL2/virtualization blocker recorded earlier was resolved on the dev machine.
+Re-checked from scratch: `wsl --status` → `Default Distribution: docker-desktop,
+Default Version: 2`; `docker info` → `Server Version: 29.8.0`, kernel
+`6.18.33.2-microsoft-standard-WSL2`; `docker ps` → exit 0.
+
+**One fix was required to bring the stack up:** `minio/minio:latest` on Docker Hub is no
+longer publicly pullable (`pull access denied for minio/minio, repository does not exist
+or may require 'docker login'`), which aborted the whole `compose up`. The image is now
+sourced from MinIO's own registry, `quay.io/minio/minio:latest`, in
+`infra/docker-compose.yml`. The database image needed no change:
+`timescale/timescaledb-ha:pg16` does carry all three required extensions, so the earlier
+fallback plan (`postgis/postgis` + build step) was not needed.
+
+`pnpm db:up` → all three containers **Started → Healthy**, exit 0.
+`pnpm db:verify` → **stack verified: all checks passed**, exit 0.
+
+| Component | Version | Functional proof |
+|---|---|---|
+| PostgreSQL | **16.15** (Ubuntu 16.15-1.pgdg22.04+2) | `SELECT version()` |
+| PostGIS | **3.6.4** | `ST_Distance` on `geography` between two points 0.1° apart at 13.1°N → **10844 m** (correct for that latitude) |
+| TimescaleDB | **2.30.1** | `create_hypertable('evidence._ts_probe','t')` → `(1,evidence,_ts_probe,t)`; probe table dropped |
+| pgvector | **0.8.6** | `'[1,2,3]'::vector <-> '[4,5,6]'::vector` → **5.196152422706632** (= √27) |
+| pg_trgm | 1.6 | present in `pg_extension` |
+| Schemas | — | `evidence`, `geo`, `provenance` all created by the init script |
+| Redis 7 | — | `redis-cli ping` → `PONG` |
+| MinIO | — | `/minio/health/live` → live; container healthy |
+
+API readiness against the live stack: `GET /readyz` → `{"status":"ok"}` with
+`postgres` 43.21 ms, `redis` 36.39 ms, `object-store` 35.40 ms — all `ok`. The same
+endpoint returned `down` for all three before the stack was up, so the probe reflects
+reality rather than a hardcoded result.
+
+**PLAN.md Phase 0.2 acceptance criterion is now met.**
+
 ### NOT verified — do not claim these
 
-- **The Docker stack has never started — root cause identified 2026-09-18.** Docker
-  Desktop was fully restarted (all processes killed, relaunched from
-  `%LOCALAPPDATA%\Programs\DockerDesktop\Docker Desktop.exe`) and the engine still
-  fails. Evidence:
-  - `docker info` → times out (exit 124); `docker ps` → `500 Internal Server Error ...
-    dockerDesktopLinuxEngine/v1.56/containers/json`
-  - `pnpm db:up` → `500 Internal Server Error ... /_ping`; `pnpm db:verify` → stops at
-    its first guard: `FAIL docker daemon is not responding`
-  - Docker Desktop's own log: `apiproxy ... dialing 192.168.65.7:2376: context canceled`
-    — the Linux VM is not running.
-  - `wsl --list --verbose` → **"has no installed distributions"**;
-    `wsl --status` → **"WSL2 is unable to start since virtualization is not enabled on
-    this machine. Please ensure the 'Virtual Machine Platform' optional component is
-    enabled and virtualization is turned on in your computer's firmware settings."**
-  Docker Desktop here uses the WSL2 backend, so with no WSL distro and WSL2 unable to
-  start, the Linux engine cannot come up. **Therefore PostGIS / TimescaleDB / pgvector
-  remain UNVERIFIED**, and PLAN 0.2's acceptance criterion is still open. The
-  `timescale/timescaledb-ha:pg16` image has never been pulled, so whether it carries
-  pgvector is still an assumption.
 - **No data source is live.** INCOIS, IMD, CMEMS, MOSDAC, NIOT, Bhashini and every LLM
   provider are unconfigured and uncontacted. No credentials exist in this environment.
 - **0.4 risk spikes (a)–(e) were not run** — see blockers.
@@ -84,10 +101,10 @@ or LLM provider is called by any code in this commit.
   3.14 today, but the Phase 1 science stack (xarray, GeoPandas, Shapely, psycopg) has
   reliable wheels on 3.12, which is what `services/api/Dockerfile` pins. Expect host/
   container divergence at Phase 1; the container is authoritative.
-- **`timescale/timescaledb-ha:pg16` is an assumption.** It is chosen because it bundles all
-  three extensions, but that has not been confirmed on this machine. If the image does not
-  carry pgvector, the fallback is `postgis/postgis:16-3.4` plus a build step installing
-  TimescaleDB and pgvector.
+- ~~`timescale/timescaledb-ha:pg16` is an assumption~~ — **confirmed 2026-09-18**: the
+  image ships PostGIS 3.6.4, TimescaleDB 2.30.1 and pgvector 0.8.6 on PostgreSQL 16.15.
+  Registry risk is real though, and bit us once: `minio/minio` on Docker Hub became
+  non-pullable. Images are worth pinning by digest before the finale.
 - **Readiness probes are TCP-only.** They prove a port answers, not that the database is
   usable, and the payload says exactly that. Phase 1 should replace them with a real query
   once a driver is in the dependency set.
@@ -97,22 +114,9 @@ or LLM provider is called by any code in this commit.
 
 ### Blockers
 
-1. **WSL2 / virtualization is unavailable — blocks all Docker work.** A Docker Desktop
-   restart was attempted on 2026-09-18 and did not fix it; this is not a Docker problem
-   but a host-platform one, and it **cannot be resolved from this session**: the fix
-   needs Administrator rights (this session runs unelevated — confirmed via
-   `WindowsPrincipal.IsInRole`) and a reboot.
-   Fix, in order, on the dev machine:
-   1. In an **Administrator** terminal: `wsl --install --no-distribution` (enables the
-      Virtual Machine Platform component), then **reboot**.
-   2. If WSL still refuses after the reboot, enable virtualization (Intel VT-x) in the
-      BIOS/UEFI — `Win32_Processor.VirtualizationFirmwareEnabled` currently reads
-      `False`, though VBS is reported running, so the firmware setting should be checked
-      only if step 1 does not resolve it.
-   3. Then: `pnpm db:up && pnpm db:verify`.
-   Fallback if the machine cannot be changed: run PostgreSQL 16 + PostGIS + TimescaleDB +
-   pgvector on another host (or a managed instance) and point `DATABASE_URL` at it — the
-   code has no local-Docker assumption.
+1. ~~WSL2 / virtualization unavailable~~ — **RESOLVED 2026-09-18.** Docker engine,
+   database stack and `pnpm db:verify` all confirmed working (see the verified section
+   above). No longer a blocker.
 2. **No credentials** — blocks spikes (a) MOSDAC SSO, (d) Bhashini quota test. Spikes (b)
    INCOIS wave/OSF griddap ID and (c) OMNI buoy history need no key and can be run as soon
    as someone takes them; they are keyless HTTP checks against public catalogs.

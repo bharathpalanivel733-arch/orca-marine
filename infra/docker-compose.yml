@@ -40,7 +40,10 @@ services:
   minio:
     # Object cache for subsetted Zarr/COG fields (Phase 1.10) and the TTS audio
     # cache (Phase 7.7). S3-compatible, so production can swap in GCS/S3 unchanged.
-    image: minio/minio:latest
+    # Sourced from quay.io: the Docker Hub `minio/minio` repo is no longer publicly
+    # pullable ("pull access denied ... may require 'docker login'"), and quay.io is
+    # MinIO's own published registry.
+    image: quay.io/minio/minio:latest
     container_name: orca-minio
     environment:
       MINIO_ROOT_USER: orca-minio
