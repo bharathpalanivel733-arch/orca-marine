@@ -121,7 +121,9 @@ class BoundingBox(OrcaModel):
 
     def contains(self, lat: float, lon: float) -> bool:
         """Whether a point falls inside this box (inclusive edges)."""
-        return self.min_lat <= lat <= self.max_lat and self.min_lon <= lon <= self.max_lon
+        return (
+            self.min_lat <= lat <= self.max_lat and self.min_lon <= lon <= self.max_lon
+        )
 
     def intersects(self, other: BoundingBox) -> bool:
         """Whether two boxes overlap, used to check that a source covers a query."""
@@ -233,12 +235,17 @@ class ObservationRecord(OrcaModel):
     unit: str
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
-    depth_m: float | None = Field(default=None, ge=0, description="Positive down; None = surface.")
+    depth_m: float | None = Field(
+        default=None, ge=0, description="Positive down; None = surface."
+    )
     valid_time: datetime = Field(description="Instant the value describes.")
     issued_time: datetime = Field(description="Instant the source published it.")
-    source: str = Field(description="The SourceDescriptor.source_id that produced this record.")
+    source: str = Field(
+        description="The SourceDescriptor.source_id that produced this record."
+    )
     dataset_id: str | None = Field(
-        default=None, description="Upstream dataset identifier, e.g. an ERDDAP griddap id."
+        default=None,
+        description="Upstream dataset identifier, e.g. an ERDDAP griddap id.",
     )
     quality: DataQuality = DataQuality.OBSERVED
     kind: MeasurementKind = MeasurementKind.OBSERVATION
@@ -276,3 +283,59 @@ class ObservationRecord(OrcaModel):
     def is_stale(self, cadence: Cadence, now: datetime) -> bool:
         """Whether this record is stale for the given cadence."""
         return cadence.is_stale(self.issued_time, now)
+
+
+class ArchiveRef(OrcaModel):
+    """Pointer to an archived raw upstream payload (PLAN.md Phase 1.10 / 6.4).
+
+    Every fetch stores exactly what the upstream returned, content-addressed by SHA-256.
+    Deterministic replay re-runs a decision from these bytes rather than re-querying a
+    source whose data has since changed.
+    """
+
+    uri: str = Field(
+        description="Where the payload is stored, e.g. s3://orca-cache/raw/..."
+    )
+    sha256: str = Field(min_length=64, max_length=64, description="Content address.")
+    size_bytes: int = Field(ge=0)
+    content_type: str
+    source_id: str
+    dataset_id: str | None = None
+    retrieved_at: datetime
+
+    _aware = field_validator("retrieved_at")(_require_aware)
+
+
+class AttemptOutcome(StrEnum):
+    """Why one source was or was not used."""
+
+    SUCCESS = "success"
+    UNSUPPORTED = "unsupported"
+    UNAVAILABLE = "unavailable"
+    STALE = "stale"
+    EMPTY = "empty"
+
+
+class SourceAttempt(OrcaModel):
+    """One source tried during a fetch, recorded whether it succeeded or not.
+
+    This is the provenance trail behind a fallback: it is not enough to know that CMEMS
+    answered, the decision record must also show that INCOIS was tried first and why it
+    was rejected (DEPLOYMENT.md §4).
+    """
+
+    source_id: str
+    outcome: AttemptOutcome
+    reason: str | None = Field(
+        default=None, description="Required when outcome is not success."
+    )
+    record_count: int = Field(default=0, ge=0)
+    elapsed_ms: float = Field(default=0.0, ge=0)
+    archive_refs: tuple[ArchiveRef, ...] = ()
+
+    @model_validator(mode="after")
+    def _require_reason_on_failure(self) -> Self:
+        if self.outcome is not AttemptOutcome.SUCCESS and not self.reason:
+            msg = f"a {self.outcome} attempt must carry a reason"
+            raise ValueError(msg)
+        return self

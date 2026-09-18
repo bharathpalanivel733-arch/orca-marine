@@ -11,8 +11,24 @@ Build each source as an **adapter behind a common cache** so any one source can 
 the platform.
 
 ### INCOIS — the primary Indian authority
-- **INCOIS ERDDAP** — `https://erddap.incois.gov.in/erddap` (server v2.30.0). Open, no key. Best
-  programmatic Indian source. Confirmed live dataset IDs:
+- **INCOIS ERDDAP** — `https://erddap.incois.gov.in/erddap` (server v2.30.0). Open, no key.
+  > **CORRECTION (verified live 2026-09-18, Phase 1.2).** These datasets are **historical
+  > archives, not live feeds**. Time coverage *ends*: `incois_tmi_3day_datasets` 2014-12-31 ·
+  > `NOAA_AVHRR_AMSR_datasets` 2011-10-04 · `incois_argo_sst_weekly` 2010-12-29 ·
+  > `AMSRE_MONTHLY_GLOBAL` 2011-09-14 · `incois_oceansat2_datasets` 2020-05-01 ·
+  > `ascat_daily_datasets` 2023-05-21 · `ascat_mnt_datasets` 2021-11-01 ·
+  > `incois_quickscat_daily_datasets` 2009-11-21 · `Indian_ARGO_Floats` 2025-04-23.
+  > So this server **cannot answer "is it safe tomorrow"**. Its value to ORCA is the
+  > hindcast archive the Reliability Horizon needs (PLAN.md 10.1) and climatology for the
+  > causal engine. Do not describe it on stage as a live feed.
+  >
+  > Also verified: `NOAA_AVHRR_AMSR_datasets` has a **`zlev`** dimension and
+  > `ascat_*_datasets` a **`depth`** dimension, so the `SST[time][lat][lon]` pattern below
+  > is wrong for them. The adapter discovers dimensions from each dataset's `info`
+  > document instead of hardcoding. `incois_tmi_3day_datasets` is also on a **0–360**
+  > longitude grid, not −180–180.
+
+  Confirmed dataset IDs (archive coverage as above):
   - `incois_tmi_3day_datasets` — 3-day TMI SST (griddap)
   - `NOAA_AVHRR_AMSR_datasets` — blended daily OI SST (griddap)
   - `incois_quickscat_daily_datasets`, `ascat_daily_datasets`, `ascat_mnt_datasets` — scatterometer winds
@@ -38,9 +54,16 @@ the platform.
   real anchor for the anomaly-detection module.
 
 ### IMD — weather, cyclone, marine bulletins
-- `https://api.imd.gov.in/api/v1/…` — public JSON, no `data.gov.in` key required (IP-whitelisting
-  optional for heavy use; IMD asks for attribution + client caching). Relevant endpoints (JSON, several
-  GeoJSON):
+- `https://api.imd.gov.in/api/v1/…`
+  > **CORRECTION (verified live 2026-09-18, Phase 1.3). This API is no longer keyless.**
+  > Every endpoint tested — `cyclone_track`, `seabulletin?id=1`, `fishermen-warning`,
+  > `current_wx` — returns **HTTP 401 `{"error":"API key missing"}`**. The original
+  > "no key required" note below is out of date. IMD is now a **credential-dependent**
+  > source: `IMD_API_KEY` must be obtained and set, and until then the IMD adapter
+  > degrades with that stated reason rather than silently returning nothing.
+  > IMD still asks for attribution + client-side caching.
+
+  Relevant endpoints (JSON, several GeoJSON):
   - `seabulletin?id=…`, `coastalbulletin`, `portwarning?id=…`, `fishermen-warning`
   - `cyclone_track` (observed + forecast positions, MSW, category), `cyclone_wind` (GeoJSON 27/34/50/64-kt
     wind radii), `cyclone_cou` (GeoJSON cone of uncertainty)
@@ -91,10 +114,10 @@ the platform.
 
 | Source | Access type | Auth | Format | Realistic to wire in days? |
 |---|---|---|---|---|
-| INCOIS ERDDAP | OPeNDAP/REST (griddap/tabledap) | none | NetCDF/CSV/JSON | **Yes — start here** |
-| IMD `api.imd.gov.in` | REST/JSON + GeoJSON | none | JSON | Yes |
+| INCOIS ERDDAP | OPeNDAP/REST (griddap/tabledap) | none | NetCDF/CSV/JSON | **Yes — done (Phase 1.2). Archive data only, see correction above** |
+| IMD `api.imd.gov.in` | REST/JSON + GeoJSON | **API key (verified 2026-09-18)** | JSON | Blocked on credentials |
 | CMEMS | Python toolbox | free account | NetCDF/Zarr | Yes |
-| Open-Meteo Marine | REST/JSON | none | JSON | Yes (demo fallback) |
+| Open-Meteo Marine | REST/JSON | none | JSON | **Yes — done (Phase 1.5), live-verified; currently the only keyless numeric source** |
 | marineregions/WDPA/GEBCO | bulk download (shp/geojson/tif) | none | vector/raster | Yes (load once into PostGIS) |
 | INCOIS PFZ/OSF | WMS + text scrape | none | WMS/text/PDF | Partial — parse text |
 | MOSDAC | Python `mdapi` client | SSO registration | HDF5/NetCDF | Partial — registration + latency |

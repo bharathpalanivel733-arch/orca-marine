@@ -14,11 +14,14 @@
     "schemas:generate": "pnpm --filter @orca/schemas generate",
     "lint": "pnpm --filter @orca/web lint && python -m ruff check services packages scripts",
     "format": "python -m ruff format services packages scripts",
-    "typecheck": "pnpm --filter @orca/web typecheck && python -m mypy services/api/orca_api packages/schemas/orca_schemas",
+    "typecheck": "pnpm --filter @orca/web typecheck && python -m mypy services/api/orca_api packages/schemas/orca_schemas services/ingest/orca_ingest",
     "test": "python -m pytest -q",
     "verify": "pnpm lint && pnpm typecheck && pnpm test",
     "setup:py": "python -m venv .venv && python -c \"import subprocess,sys,os; py=os.path.join('.venv','Scripts','python.exe') if os.name=='nt' else os.path.join('.venv','bin','python'); subprocess.check_call([py,'-m','pip','install','-e','packages/schemas','-e','services/api[dev,otel]','-e','services/agents','-e','services/ingest'])\"",
-    "spikes": "python scripts/spikes/run_spikes.py"
+    "spikes": "python scripts/spikes/run_spikes.py",
+    "db:migrate": "python -m orca_ingest.storage.migrate",
+    "test:stack": "python -m pytest -m stack -q",
+    "test:live": "python -m pytest -m live -q"
   },
   "devDependencies": {}
 }

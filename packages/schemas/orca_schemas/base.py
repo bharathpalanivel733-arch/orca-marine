@@ -50,11 +50,15 @@ class OrcaModel(BaseModel):
 class RunContext(OrcaModel):
     """Identity of a single end-to-end run, propagated to every service and log line."""
 
-    run_id: str = Field(default_factory=new_run_id, description="Unique id for this run.")
+    run_id: str = Field(
+        default_factory=new_run_id, description="Unique id for this run."
+    )
     parent_run_id: str | None = Field(
         default=None, description="Set when this run was spawned by another run."
     )
-    service: str = Field(description="Service that created or received the run context.")
+    service: str = Field(
+        description="Service that created or received the run context."
+    )
     started_at: datetime = Field(default_factory=_utc_now)
 
 
@@ -94,7 +98,9 @@ class ServiceHealth(OrcaModel):
             status = HealthStatus.DEGRADED
         else:
             status = HealthStatus.OK
-        return cls(service=service, version=version, status=status, components=components)
+        return cls(
+            service=service, version=version, status=status, components=components
+        )
 
 
 class ProblemDetail(OrcaModel):

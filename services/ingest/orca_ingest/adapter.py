@@ -22,6 +22,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 from orca_schemas import (
+    ArchiveRef,
     BoundingBox,
     Cadence,
     MarineVariable,
@@ -54,6 +55,10 @@ class FetchResult(OrcaModel):
     retrieved_at: datetime
     missing_variables: frozenset[MarineVariable] = frozenset()
     warnings: tuple[str, ...] = ()
+    raw_refs: tuple[ArchiveRef, ...] = Field(
+        default=(),
+        description="Archived upstream payloads behind these records (PLAN.md Phase 1.10).",
+    )
 
     def records_for(self, variable: MarineVariable) -> tuple[ObservationRecord, ...]:
         """Records for one variable, in the order the adapter returned them."""

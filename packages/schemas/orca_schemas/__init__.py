@@ -21,12 +21,15 @@ from orca_schemas.base import (
 )
 from orca_schemas.ingest import (
     CANONICAL_UNITS,
+    ArchiveRef,
+    AttemptOutcome,
     BoundingBox,
     Cadence,
     DataQuality,
     MarineVariable,
     MeasurementKind,
     ObservationRecord,
+    SourceAttempt,
     SourceDescriptor,
     TimeWindow,
 )
@@ -34,6 +37,8 @@ from orca_schemas.ingest import (
 __all__ = [
     "CANONICAL_UNITS",
     "RUN_ID_HEADER",
+    "ArchiveRef",
+    "AttemptOutcome",
     "BoundingBox",
     "Cadence",
     "ComponentHealth",
@@ -46,6 +51,7 @@ __all__ = [
     "ProblemDetail",
     "RunContext",
     "ServiceHealth",
+    "SourceAttempt",
     "SourceDescriptor",
     "TimeWindow",
     "new_run_id",

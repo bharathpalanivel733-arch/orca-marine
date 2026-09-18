@@ -79,8 +79,12 @@ class TestMissingData:
 
 
 class TestGeometryAndTime:
-    @pytest.mark.parametrize(("lat", "lon"), [(91, 80), (-91, 80), (13, 181), (13, -181)])
-    def test_out_of_range_coordinates_are_rejected(self, lat: float, lon: float) -> None:
+    @pytest.mark.parametrize(
+        ("lat", "lon"), [(91, 80), (-91, 80), (13, 181), (13, -181)]
+    )
+    def test_out_of_range_coordinates_are_rejected(
+        self, lat: float, lon: float
+    ) -> None:
         with pytest.raises(ValidationError):
             make_record(lat=lat, lon=lon)
 
@@ -165,5 +169,7 @@ class TestSourceDescriptor:
 
 
 def test_record_round_trips_through_json() -> None:
-    record = make_record(kind=MeasurementKind.FORECAST, dataset_id="cmems_mod_glo_wav_anfc")
+    record = make_record(
+        kind=MeasurementKind.FORECAST, dataset_id="cmems_mod_glo_wav_anfc"
+    )
     assert ObservationRecord.model_validate_json(record.model_dump_json()) == record

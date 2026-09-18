@@ -46,7 +46,8 @@ def test_health_rollup_is_worst_case(
     component_statuses: tuple[HealthStatus, ...], expected: HealthStatus
 ) -> None:
     components = tuple(
-        ComponentHealth(name=f"dep{i}", status=s) for i, s in enumerate(component_statuses)
+        ComponentHealth(name=f"dep{i}", status=s)
+        for i, s in enumerate(component_statuses)
     )
     health = ServiceHealth.from_components("orca-api", "0.1.0", components)
     assert health.status is expected

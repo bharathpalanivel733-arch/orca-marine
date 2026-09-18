@@ -220,13 +220,96 @@ compiled. Async tests confirmed executing (not skipped) via
 
 **No network call is made by any code in 1.1**, and no source is configured as live.
 
-### Next: 1.2 INCOIS ERDDAP adapter
+### 1.2-1.12 Adapters, degradation, caching, persistence — DONE (2026-09-18)
 
-The plan's designated starting source (`DEPLOYMENT.md` §3: "start here"). Keyless, so it
-can be verified against the live catalog. Per `PLAN.md` 1.2, dimension order and variable
-names must be confirmed from each dataset's `.das` before being hardcoded, and the wave /
-Ocean-State-Forecast griddap id is the one that was never confirmable by name — if it
-cannot be found live, CMEMS `VHM0` remains the primary wave source.
+**Two findings that change the project's assumptions.** Both are recorded as corrections
+in `DEPLOYMENT.md` §2 because they would otherwise be discovered on stage:
+
+1. **Every INCOIS ERDDAP dataset is a historical archive, not a live feed.** Verified via
+   each dataset's own `info` document: `incois_tmi_3day_datasets` ends **2014-12-31**,
+   `NOAA_AVHRR_AMSR_datasets` **2011-10-04**, `incois_oceansat2_datasets` **2020-05-01**,
+   `ascat_daily_datasets` **2023-05-21**, `Indian_ARGO_Floats` **2025-04-23**. INCOIS
+   ERDDAP therefore **cannot answer "is it safe tomorrow"**; its value is the hindcast
+   archive the Reliability Horizon needs (10.1) and climatology for the causal engine.
+2. **IMD `api.imd.gov.in` is no longer keyless.** Every endpoint returns
+   `401 {"error":"API key missing"}`. The docs described it as requiring no key. IMD is
+   now a credential-dependent source and needs `IMD_API_KEY`.
+
+Consequence: **Open-Meteo Marine is currently the only keyless live numeric source**, and
+CMEMS (credentialed) is the primary wave source per spike (b). The architecture handles
+this correctly rather than hiding it — the staleness gate rejects the ERDDAP archives for
+present-day queries automatically.
+
+#### Delivered
+
+- [x] **1.1 contract + interface** (previous commit) — `ObservationRecord`, `FetchRequest`,
+      `SourceAdapter`, cadence metadata.
+- [x] **1.2 INCOIS ERDDAP adapter** — discovers dimensions, variables, licence and time
+      coverage from each dataset's `info` document; **nothing hardcoded**. Handles the
+      `zlev`/`depth` extra axes (pinned, not dropped — dropping one misaligns every later
+      constraint) and the 0–360 longitude grid. Refuses out-of-coverage windows with an
+      explanation. ERDDAP's 404-for-no-matches is treated as empty, not as an outage.
+- [x] **1.3 IMD**, **1.4 CMEMS**, **1.8 MOSDAC**, **1.9 NIOT OMNI** — credential-gated
+      scaffolds that raise `SourceUnavailableError` naming the missing variable. "Not
+      registered" and "not built yet" are distinct reasons, because they call for
+      different actions. MOSDAC deliberately does **not** declare Oceansat-3 SST.
+- [x] **1.5 Open-Meteo Marine adapter** — live-verified. Maps `°`→`degree`, turns nulls
+      into `quality=missing` records (never 0.0, which would read as a flat calm), takes
+      coordinates from the response rather than the request, and refuses a field whose
+      upstream unit is unexpected rather than guessing a conversion.
+- [x] **1.6 INCOIS PFZ**, **1.7 INCOIS OSF** — scaffolds stating they have no JSON API
+      (text/WMS and bulletins only); PFZ carries the 3×/week (56 h) cadence.
+- [x] **1.10 raw-payload archiving** — SHA-256 content-addressed, idempotent, filesystem
+      and S3/MinIO backends. This is what deterministic replay (6.4) re-runs from.
+- [x] **1.10 TimescaleDB persistence** — `evidence.observations` hypertable with
+      provenance columns, a natural-key upsert (re-ingest updates, never duplicates) and
+      DB-level CHECK constraints mirroring the Pydantic invariants.
+- [x] **1.10 object storage** — MinIO via boto3; **Zarr implemented**.
+      **COG is NOT implemented** and raises `NotImplementedError` — it needs rasterio/GDAL
+      and has no consumer yet. A stub that wrote something else would be worse than a gap.
+- [x] **1.11 degradation policy** — deterministic ordering by `authority_rank`; every
+      attempt recorded as a `SourceAttempt` with outcome and reason, so a decision can show
+      what was tried and rejected, not just what won.
+- [x] **1.12 cadence-aware cache + staleness flags** — expiry is the source's own cadence,
+      measured from *issue* time, not cache-write time.
+
+#### Evidence
+
+| Check | Result |
+|---|---|
+| `pnpm verify` | **exit 0** — ruff clean, `mypy --strict` clean (24 files), `tsc` clean |
+| Unit tests | **110 passed** (was 62), 10 deselected opt-in |
+| `pytest -m stack` | **7 passed** against the real TimescaleDB + MinIO |
+| `pytest -m live` | **3 passed** against real endpoints |
+| `pnpm db:migrate` | applied to `localhost:5432/orca` |
+
+Live evidence: Open-Meteo returned current wave forecasts for Chennai with plausible
+values and correct units; ERDDAP discovery returned real dimensions and a coverage end in
+2014; a present-day ERDDAP query was refused with the archive explanation.
+
+**The staleness guarantee is tested, not asserted** (`test_degradation.py`):
+a stale authoritative source falls through to a fresh fallback; when *every* source is
+stale the result is **empty with recorded reasons** rather than old data; staleness is
+judged against each source's own cadence (6 h is fresh for a 3×/week advisory, stale for
+an hourly buoy); and stale data is reachable only through an explicit opt-in that still
+exposes its age.
+
+#### Not done / deliberately deferred
+
+- **COG output** — not implemented (see above).
+- **Redis cache backend** — the `CacheBackend` interface is there and Redis is running,
+  but only the in-memory backend is built; cross-process sharing has no consumer yet.
+- **No credentialed source has ever been contacted.** IMD, CMEMS, MOSDAC and NIOT OMNI are
+  scaffolds. Nothing in this repo has authenticated to any of them.
+- **PFZ/OSF parsing** — the scaffolds fetch nothing; text/WMS parsing is real work that
+  needs a decision on how much bulletin scraping is worth before the finale.
+
+### Next: Phase 2 — geospatial & geofencing
+
+Still hard-blocked on the agreed 1974/76 India-Sri Lanka IMBL geometry (spike (e) NO_GO).
+Phase 2 must not start with a computed median line. The unblocked alternative is Phase 4
+(decision kernels), which is pure deterministic Python over the record contract that now
+exists.
 
 ## Git
 
