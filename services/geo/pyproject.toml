@@ -1,0 +1,40 @@
+[project]
+name = "orca-geo"
+version = "0.1.0"
+description = "ORCA geospatial service: IMBL geofencing, predictive drift, spatial constraints."
+requires-python = ">=3.12"
+dependencies = [
+  "orca-schemas",
+  "shapely>=2.0",
+  "pyproj>=3.6",
+  "psycopg[binary]>=3.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.6", "mypy>=1.11", "httpx>=0.27", "truststore>=0.9"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["orca_geo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "stack: requires the local docker-compose dev stack",
+    "live: makes real network calls to upstream sources",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ANN"]
+ignore = ["ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN"]

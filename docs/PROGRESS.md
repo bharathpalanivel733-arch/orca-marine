@@ -311,6 +311,102 @@ Phase 2 must not start with a computed median line. The unblocked alternative is
 (decision kernels), which is pure deterministic Python over the record contract that now
 exists.
 
+---
+
+## Phase 2 — PostGIS geospatial & predictive geofencing (2026-09-18)
+
+### The IMBL blocker is CLEARED — with authoritative sources, not a median line
+
+Spike (e) had returned NO_GO because marineregions publishes only EEZ and derived
+geometries. The boundary was found instead in the **UN DOALOS Delimitation Treaties
+Infobase**, which holds the deposited texts of all three agreements:
+
+| Agreement | Signed | Content | SHA-256 (recorded, re-verified live) |
+|---|---|---|---|
+| `LKA-IND1974BW.PDF` | 26/28 Jun 1974 | Art. 1: six positions, Palk Strait to Adam's Bridge | `2cf10cb6…` |
+| `LKA-IND1976MB.PDF` | 23 Mar 1976 | Art. 1: thirteen positions, Gulf of Mannar; Art. 2: eight, Bay of Bengal | `254d1109…` |
+| `LKA-IND1976TP.PDF` | 22 Nov 1976 | Art. 1: extension from 13 m to trijunction Point T | `4118dbd7…` |
+
+All three state the boundary is **arcs of great circles** between the listed positions,
+so segments are geodesics. **28 positions** are transcribed into
+`services/geo/orca_geo/imbl.py` with per-position treaty and article citations.
+
+**Two continuity checks confirm the texts describe one boundary** (both asserted in
+tests): 1976 `1m` == 1974 Position 6, and 1976 `1b` == 1974 Position 1. The shared
+vertices are stored once, so the geometry contains no zero-length segment.
+
+**Documented source anomaly.** 1976MB Article 1 writes position 4 m as
+`08° 40'.0 N 79° 18'.2 N` — the longitude carries `N` where every other position carries
+`E`. Corrected to `E`, recorded in `SOURCE_ANOMALIES`, surfaced by `imbl_provenance()`
+and carried into the PostGIS row, so a reviewer can challenge the judgement rather than
+having to rediscover it.
+
+### Independent corroboration
+
+The transcription is validated against geography that does not come from this code. Seven
+known points classify correctly, and **Kachchatheevu lands 1.39 km on the Sri Lankan
+side** — matching the historical fact that the 1974 line was drawn immediately west of
+the island to cede it to Sri Lanka. A wrong coordinate would not reproduce that.
+
+| Indian side | Sri Lankan side |
+|---|---|
+| Rameswaram, Point Calimere, Vedaranyam, Tondi | Kachchatheevu, Talaimannar, Kankesanthurai (Jaffna), Mannar town |
+
+### Delivered
+
+- [x] **2.1 reference layers** — `geo.boundaries` / `eez` / `protected_areas` /
+      `seasonal_bans` / `coastline` / `bathymetry_tiles`, all GIST-indexed
+      (`0002_geo.sql`). IMBL **loaded**; EEZ WFS request **implemented**; MPA (WDPA),
+      seasonal bans, coastline (OSM) and bathymetry (GEBCO) are **documented ingestion
+      paths** in `reference.py` with endpoint, access method and licence. An unbuilt
+      loader raises with the next step — it never returns an empty layer, which for a
+      protected-area layer would read as "no restrictions here".
+- [x] **2.2 containment and metric distance** — PostGIS `ST_Distance` on `geography` is
+      authoritative; `pyproj` gives the same answer in-process without a round trip.
+- [x] **2.3 warning bands** — 5 km amber / 2 km red by default, configurable, with
+      `ST_Buffer` band geometry so the map draws what the warnings are computed from.
+- [x] **2.4 predictive drift** — vessel velocity + forecast current; crossing time found
+      by stepping then **bisecting**, so the answer is step-size independent (asserted).
+      Engine-off pure-current drift is supported, since that is how crossings happen.
+      Every forecast carries its own assumptions (current held constant, no wind leeway).
+- [x] **2.5 solver constraints** — MPA and seasonal bans as hard/soft constraints;
+      year-wrapping closed seasons handled; an MPA with no seasonal window is closed
+      year-round, never never-closed.
+- [x] **2.6 Palk Strait regression tests** — the table above, plus band-threshold,
+      crossing-detection and transcription-integrity tests.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `pnpm verify` | **exit 0** — ruff clean, `mypy --strict` clean (31 files), `tsc` clean |
+| Unit tests | **172 passed** (was 110); 62 new in `services/geo` |
+| `pytest -m stack` | **17 passed** against real PostGIS |
+| `pytest -m live` | treaty PDFs re-downloaded; **all three SHA-256 match** |
+
+**A real discrepancy was found, understood and bounded rather than hidden.** The PostGIS
+and pyproj distances disagree by up to ~8 m on 28 km (0.03%) and ~2 m on 726 m (0.3%),
+because `ST_ClosestPoint` finds the nearest point in planar degree space and the two
+differ slightly in spheroid handling. The tolerance reflects that; separately,
+`test_distance_disagreement_never_changes_a_warning_band` asserts the property that
+actually matters — that the gap can never move a vessel between bands.
+
+### Not done
+
+- **MPA, coastline and bathymetry geometry is not loaded.** Paths are documented and the
+  schema is ready; the WDPA licence restricts redistribution so the file is not vendored.
+- **Seasonal ban dates are not loaded.** They are per-state notifications that change;
+  the fixtures in tests are explicitly labelled as fixtures, not authoritative dates.
+- **EEZ is implemented but not loaded** — the WFS request is built, nothing has fetched it
+  into the table yet.
+- Drift does not model wind leeway, tidal variation along track, or course change.
+
+### Next phase
+
+**Phase 4 — decision kernels** (safety score, Pareto fishing zones, isochrone-A* routing).
+Phase 3 (evidence/RAG) is also unblocked. Phase 2's geometry is now available as the hard
+constraint layer that Phase 4.4's route cost surface needs.
+
 ## Git
 
 Repository initialized 2026-09-18 (`git init -b main`); Phase 0 committed as
