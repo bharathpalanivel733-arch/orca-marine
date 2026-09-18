@@ -53,6 +53,37 @@ or LLM provider is called by any code in this commit.
 | API runtime | `uvicorn orca_api.main:app` + curl | `/healthz` → `{"status":"ok"}`; `X-Run-Id: orca_7ee39b19…` minted; inbound `X-Run-Id: orca_manual_check` preserved unchanged; JSON logs carry the run id on both request lines |
 | Degradation | `curl /readyz` with no stack running | `status: "down"`, each of postgres/redis/object-store reported `down` with `"tcp connect timed out after 2.0s"` — no false "ok" |
 
+### 0.4 Day-1 risk spikes — EXECUTED 2026-09-18
+
+Tooling: `scripts/spikes/run_spikes.py` (`pnpm spikes` / `make spikes`), time-boxed per
+spike, credential-independent, writing `artifacts/spikes/latest.json` with every probe's
+URL, HTTP status and elapsed time. Verdicts: `GO` (capability present), `NO_GO` (probed,
+absent), `BLOCKED` (needs a credential or manual step — never guessed), `ERROR` (the probe
+itself failed; unknown, not a finding). Run result: **2 NO_GO, 3 BLOCKED, 0 ERROR**, exit 0.
+
+| Spike | Verdict | Evidence | Decision |
+|---|---|---|---|
+| **(a) MOSDAC registration / latency** | **BLOCKED** | `mosdac.gov.in` 200, `/catalog/satellite.php` 200, `HEAD /software/mdapi.zip` 200 — service is up. `MOSDAC_USERNAME`/`MOSDAC_PASSWORD` unset, so L1 latency is unmeasured. | MOSDAC stays a Phase 1.8 enhancement behind CMEMS + INCOIS. No Oceansat-3 SST claimed regardless (SSTM non-operational). |
+| **(b) INCOIS wave / OSF griddap id** | **NO_GO** | ERDDAP up (200). **Control search `sst` → 4 datasets**, proving the query shape works; `wave`, `swell`, `osf`, `indofos` each → HTTP 404 *"your query produced no matching results."* | **Confirms the DEPLOYMENT.md §2 caveat.** CMEMS `cmems_mod_glo_wav_anfc_0.083deg_PT3H-i` (VHM0) is the **primary** wave source in Phase 1.4, not a fallback. INCOIS OSF waves only via bulletin/WMS scraping (Phase 1.7, lower priority). |
+| **(c) NIOT OMNI buoy history** | **BLOCKED** | `niot.res.in` 200; ERDDAP `searchFor=buoy` 200; `incois.gov.in/portal/datainfo/buoys.jsp` 404. Paired forecast+observation history sits behind the account-gated OMNI-RAMA portal. | Request portal access now (long lead time). PLAN.md 10.1 trigger stands: no hindcast by Day 4 → ship the Reliability Horizon as a rigorous design with a synthetic hindcast. |
+| **(d) Bhashini quota** | **BLOCKED** | `bhashini.gov.in` 200; `meity-auth.ulcacontrib.org` 404 at root (host resolves and serves). `BHASHINI_USER_ID`/`BHASHINI_ULCA_API_KEY` unset, so no ASR/TTS call was made and quota is unmeasured. | Register for ULCA credentials. Build Phase 7 against the fallback chain regardless (self-hosted IndicWhisper / Indic-Parler-TTS + pre-generated audio cache) — that is what makes the demo quota-proof. |
+| **(e) Agreed 1974/76 IMBL geometry** | **NO_GO** | marineregions WFS capabilities 200. Layers found: `eez`, `eez_boundaries`, `eez_12nm`, `eez_24nm`, `eez_iho`, `ecs_boundaries`, `iho`, … — **all EEZ/derived geometry, none the bilateral treaty line.** | **Phase 2 remains blocked.** Source the treaty geometry from the 1974/76 agreement text (UN DOALOS / MEA treaty records), load into PostGIS as authoritative reference data, and pin known Palk Strait coordinates in a regression test. A computed median line must never be substituted (METHODS.md §3). |
+
+**A tooling defect was found and fixed, not worked around.** The first run returned
+`ERROR` on all five spikes with `CERTIFICATE_VERIFY_FAILED: unable to get local issuer
+certificate`, which looked like the endpoints being down. They were not: `curl` reached
+them (HTTP 200) because Windows `curl` uses Schannel, which fetches a missing intermediate
+CA over AIA. Python/OpenSSL does not, and an up-to-date certifi bundle did not help either
+— several of these government hosts serve an **incomplete certificate chain**. The harness
+now builds its TLS context through `truststore`, delegating chain building to the OS.
+**Certificate verification is never disabled**; a host that cannot be verified yields
+`ERROR`, because trusting an unverified government endpoint would make every result
+worthless as evidence.
+
+Spike (b) is also self-validating: ERDDAP answers a zero-match search with HTTP 404, which
+is indistinguishable from a malformed URL by status code, so a control query that must
+match runs first. Without it the NO_GO could have been an artifact of my own URL.
+
 ### Dev stack — VERIFIED 2026-09-18 (second attempt, after the host was fixed)
 
 The WSL2/virtualization blocker recorded earlier was resolved on the dev machine.
@@ -93,7 +124,10 @@ reality rather than a hardcoded result.
 
 - **No data source is live.** INCOIS, IMD, CMEMS, MOSDAC, NIOT, Bhashini and every LLM
   provider are unconfigured and uncontacted. No credentials exist in this environment.
-- **0.4 risk spikes (a)–(e) were not run** — see blockers.
+- **Credential-dependent measurements remain unmeasured**: MOSDAC L1 latency and Bhashini
+  ASR/TTS quota. Both spikes report BLOCKED with the missing variable named; neither value
+  has been guessed or estimated anywhere in this repo.
+- **OMNI buoy bulk history is unproven** — reachability was probed, portal access was not.
 
 ### Risks
 

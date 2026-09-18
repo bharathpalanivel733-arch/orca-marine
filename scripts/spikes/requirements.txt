@@ -1,0 +1,8 @@
+# Dependencies for the Day-1 risk spikes (scripts/spikes/run_spikes.py).
+#   pip install -r scripts/spikes/requirements.txt
+httpx>=0.27
+# Delegates TLS chain building to the OS. Required because several Indian government
+# endpoints serve an incomplete certificate chain: OpenSSL cannot fetch the missing
+# intermediate, the OS can. Without this the spikes fail with CERTIFICATE_VERIFY_FAILED
+# even though the hosts are up. Verification is never disabled.
+truststore>=0.9

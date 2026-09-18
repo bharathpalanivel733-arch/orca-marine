@@ -31,3 +31,6 @@ Thumbs.db
 
 # TS build info
 *.tsbuildinfo
+
+# Spike run artifacts (verdicts are recorded in docs/PROGRESS.md)
+artifacts/
