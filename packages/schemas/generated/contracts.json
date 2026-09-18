@@ -1,5 +1,61 @@
 {
   "$defs": {
+    "BoundingBox": {
+      "additionalProperties": false,
+      "description": "Geographic query extent in WGS84 degrees.",
+      "properties": {
+        "min_lat": {
+          "maximum": 90,
+          "minimum": -90,
+          "type": "number"
+        },
+        "max_lat": {
+          "maximum": 90,
+          "minimum": -90,
+          "type": "number"
+        },
+        "min_lon": {
+          "maximum": 180,
+          "minimum": -180,
+          "type": "number"
+        },
+        "max_lon": {
+          "maximum": 180,
+          "minimum": -180,
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_lat",
+        "max_lat",
+        "min_lon",
+        "max_lon"
+      ],
+      "type": "object",
+      "title": "BoundingBox"
+    },
+    "Cadence": {
+      "additionalProperties": false,
+      "description": "How often a source refreshes, and how much lateness is tolerated.\n\nStaleness is a deterministic function of cadence and the clock \u2014 never a judgement\ncall, and never something an LLM decides.",
+      "properties": {
+        "period": {
+          "description": "Nominal interval between issues.",
+          "format": "duration",
+          "type": "string"
+        },
+        "grace": {
+          "default": "PT0S",
+          "description": "Lateness tolerated beyond one period before data counts as stale.",
+          "format": "duration",
+          "type": "string"
+        }
+      },
+      "required": [
+        "period"
+      ],
+      "type": "object",
+      "title": "Cadence"
+    },
     "ComponentHealth": {
       "additionalProperties": false,
       "description": "Condition of one dependency (database, cache, object store, upstream feed).",
@@ -42,6 +98,18 @@
       "type": "object",
       "title": "ComponentHealth"
     },
+    "DataQuality": {
+      "description": "How much the value itself can be relied on, independent of its age.",
+      "enum": [
+        "observed",
+        "interpolated",
+        "gap_filled",
+        "suspect",
+        "missing"
+      ],
+      "type": "string",
+      "title": "DataQuality"
+    },
     "HealthStatus": {
       "description": "Service or dependency condition.\n\n``degraded`` is a first-class state, not a soft failure: ORCA is designed to keep\noperating with missing or stale inputs and to say so (ARCHITECTURE.md \u00a77).",
       "enum": [
@@ -51,6 +119,133 @@
       ],
       "type": "string",
       "title": "HealthStatus"
+    },
+    "MarineVariable": {
+      "description": "Canonical variable names.\n\nAdapters translate their upstream naming (``SST``, ``analysed_sst``, ``thetao``,\n``VHM0``) into these, which is what lets one variable be served by several sources\nthat use different vocabularies.",
+      "enum": [
+        "sea_surface_temperature",
+        "chlorophyll",
+        "significant_wave_height",
+        "peak_wave_period",
+        "mean_wave_direction",
+        "swell_height",
+        "wind_speed",
+        "wind_direction",
+        "current_speed",
+        "current_direction",
+        "sea_surface_salinity",
+        "mixed_layer_depth",
+        "depth_of_20c_isotherm",
+        "sea_level"
+      ],
+      "type": "string",
+      "title": "MarineVariable"
+    },
+    "MeasurementKind": {
+      "description": "Whether the number describes the past or the future.\n\nThe reliability layer (PLAN.md Phase 10.1) backtests *forecasts* against buoy\n*observations*; without this distinction on the record, the two cannot be paired.",
+      "enum": [
+        "observation",
+        "analysis",
+        "forecast"
+      ],
+      "type": "string",
+      "title": "MeasurementKind"
+    },
+    "ObservationRecord": {
+      "additionalProperties": false,
+      "description": "The common record every adapter emits (PLAN.md Phase 1.1).\n\nCarries its own provenance \u2014 which source, issued when, valid when, under what\nlicence \u2014 so a number can always be traced back without consulting the adapter that\nproduced it.",
+      "properties": {
+        "variable": {
+          "$ref": "#/$defs/MarineVariable"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None only when quality is 'missing'."
+        },
+        "unit": {
+          "type": "string"
+        },
+        "lat": {
+          "maximum": 90,
+          "minimum": -90,
+          "type": "number"
+        },
+        "lon": {
+          "maximum": 180,
+          "minimum": -180,
+          "type": "number"
+        },
+        "depth_m": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Positive down; None = surface."
+        },
+        "valid_time": {
+          "description": "Instant the value describes.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "issued_time": {
+          "description": "Instant the source published it.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "source": {
+          "description": "The SourceDescriptor.source_id that produced this record.",
+          "type": "string"
+        },
+        "dataset_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Upstream dataset identifier, e.g. an ERDDAP griddap id."
+        },
+        "quality": {
+          "$ref": "#/$defs/DataQuality",
+          "default": "observed"
+        },
+        "kind": {
+          "$ref": "#/$defs/MeasurementKind",
+          "default": "observation"
+        },
+        "license": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "variable",
+        "value",
+        "unit",
+        "lat",
+        "lon",
+        "valid_time",
+        "issued_time",
+        "source",
+        "license"
+      ],
+      "type": "object",
+      "title": "ObservationRecord"
     },
     "ProblemDetail": {
       "additionalProperties": false,
@@ -165,7 +360,130 @@
       ],
       "type": "object",
       "title": "ServiceHealth"
+    },
+    "SourceDescriptor": {
+      "additionalProperties": false,
+      "description": "Registry metadata describing what one source can serve.\n\nThe planner consults these to choose a source instead of calling a hard-wired\nendpoint (PLAN.md G3 / Phase 3.1); the degradation chain uses ``authority_rank`` to\ndecide what to fall back to.",
+      "properties": {
+        "source_id": {
+          "description": "Stable identifier, e.g. 'incois_erddap'.",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "authority_rank": {
+          "description": "1 = authoritative Indian agency; higher = further down the fallback chain.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "variables": {
+          "items": {
+            "$ref": "#/$defs/MarineVariable"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "coverage": {
+          "$ref": "#/$defs/BoundingBox"
+        },
+        "cadence": {
+          "$ref": "#/$defs/Cadence"
+        },
+        "license": {
+          "type": "string"
+        },
+        "requires_auth": {
+          "default": false,
+          "type": "boolean"
+        },
+        "attribution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Text the UI must display when this source is used."
+        }
+      },
+      "required": [
+        "source_id",
+        "name",
+        "authority_rank",
+        "variables",
+        "coverage",
+        "cadence",
+        "license"
+      ],
+      "type": "object",
+      "title": "SourceDescriptor"
+    },
+    "TimeWindow": {
+      "additionalProperties": false,
+      "description": "Half-open time extent ``[start, end)`` for a query.",
+      "properties": {
+        "start": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "end": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "type": "object",
+      "title": "TimeWindow"
     }
   },
-  "title": "OrcaContracts"
+  "title": "OrcaContracts",
+  "type": "object",
+  "properties": {
+    "BoundingBox": {
+      "$ref": "#/$defs/BoundingBox"
+    },
+    "Cadence": {
+      "$ref": "#/$defs/Cadence"
+    },
+    "ComponentHealth": {
+      "$ref": "#/$defs/ComponentHealth"
+    },
+    "DataQuality": {
+      "$ref": "#/$defs/DataQuality"
+    },
+    "HealthStatus": {
+      "$ref": "#/$defs/HealthStatus"
+    },
+    "MarineVariable": {
+      "$ref": "#/$defs/MarineVariable"
+    },
+    "MeasurementKind": {
+      "$ref": "#/$defs/MeasurementKind"
+    },
+    "ObservationRecord": {
+      "$ref": "#/$defs/ObservationRecord"
+    },
+    "ProblemDetail": {
+      "$ref": "#/$defs/ProblemDetail"
+    },
+    "RunContext": {
+      "$ref": "#/$defs/RunContext"
+    },
+    "ServiceHealth": {
+      "$ref": "#/$defs/ServiceHealth"
+    },
+    "SourceDescriptor": {
+      "$ref": "#/$defs/SourceDescriptor"
+    },
+    "TimeWindow": {
+      "$ref": "#/$defs/TimeWindow"
+    }
+  }
 }

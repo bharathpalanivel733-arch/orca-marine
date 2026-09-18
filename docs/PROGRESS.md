@@ -132,6 +132,68 @@ against the keyless INCOIS ERDDAP / IMD / Open-Meteo endpoints) need no database
 verified** until the WSL2 blocker above is cleared, and must not be marked done before
 then.
 
+---
+
+## Phase 1 — Ingestion layer (in progress)
+
+### 1.1 Adapter interface + common record contract — DONE (2026-09-18)
+
+- [x] **Common record** (`packages/schemas/orca_schemas/ingest.py`) — `ObservationRecord`
+      carrying `{variable, value, unit, lat, lon, depth_m, valid_time, issued_time,
+      source, dataset_id, quality, kind, license}`. Three invariants are enforced by the
+      model rather than trusted to adapters:
+      1. **Canonical units** — `CANONICAL_UNITS` fixes one unit per variable and the
+         validator rejects anything else, so a source publishing wave height in
+         centimetres must convert inside its adapter instead of handing ORCA a number a
+         safety threshold would later misread as metres.
+      2. **Missing data is representable** — `value` may be `None` only when quality is
+         `missing`, and non-finite values (NaN/Inf, i.e. leaked NetCDF fill values) are
+         rejected outright.
+      3. **Absolute time** — naive datetimes are rejected; staleness needs unambiguous
+         instants.
+- [x] **Canonical vocabulary** — `MarineVariable` (14 variables), `DataQuality`, and
+      `MeasurementKind` (observation / analysis / forecast, needed so Phase 10.1 can pair
+      forecasts with buoy observations).
+- [x] **Query types** — `BoundingBox` (with `contains` / `intersects`) and `TimeWindow`
+      (half-open, ordering enforced).
+- [x] **Per-source cadence metadata** — `Cadence(period, grace)` with `deadline` and
+      `is_stale()`. Staleness is arithmetic on the clock, never a judgement call and never
+      an LLM decision.
+- [x] **Source registry metadata** — `SourceDescriptor` (id, authority_rank, variables,
+      coverage, cadence, license, requires_auth, attribution). `authority_rank` is what the
+      degradation chain will order fallbacks by.
+- [x] **Adapter interface** (`services/ingest/orca_ingest/adapter.py`) — `SourceAdapter`
+      ABC with `descriptor` and `async fetch(FetchRequest) -> FetchResult`, plus
+      deterministic capability checks (`supports` / `covers` / `unsupported_variables`)
+      that answer "could this source serve this" without spending a network call.
+      `SourceUnavailableError` keeps "the source did not answer" distinct from "there is
+      no data there" — the degradation chain reacts to the first and not the second.
+      Partial success is reported through `missing_variables` / `warnings`, not raised,
+      because the Phase 6.3 sufficiency gate needs to see an unanswered ask.
+- [x] TypeScript contracts regenerated from the Pydantic source (16 exports).
+
+**Fixed along the way:** the root `pnpm test` ran one pytest session from the repo root,
+where the per-package `[tool.pytest.ini_options]` blocks are not read, so async adapter
+tests failed with "async def functions are not natively supported". A root `pytest.ini`
+now sets `asyncio_mode = auto` and the canonical testpaths. Also removed duplicate
+generated TS aliases (`DataQuality1`) by making every model reachable from the schema
+bundle root.
+
+**Evidence:** `pnpm verify` exit 0 — **62 tests passed** (was 24; +38 for this task),
+ruff clean, `mypy --strict` clean across 10 source files, `tsc --noEmit` clean, web build
+compiled. Async tests confirmed executing (not skipped) via
+`pytest -v` → `asyncio: mode=Mode.AUTO`, all `PASSED`.
+
+**No network call is made by any code in 1.1**, and no source is configured as live.
+
+### Next: 1.2 INCOIS ERDDAP adapter
+
+The plan's designated starting source (`DEPLOYMENT.md` §3: "start here"). Keyless, so it
+can be verified against the live catalog. Per `PLAN.md` 1.2, dimension order and variable
+names must be confirmed from each dataset's `.das` before being hardcoded, and the wave /
+Ocean-State-Forecast griddap id is the one that was never confirmable by name — if it
+cannot be found live, CMEMS `VHM0` remains the primary wave source.
+
 ## Git
 
 Repository initialized 2026-09-18 (`git init -b main`); Phase 0 committed as

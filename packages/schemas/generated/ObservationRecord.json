@@ -1,0 +1,138 @@
+{
+  "$defs": {
+    "DataQuality": {
+      "description": "How much the value itself can be relied on, independent of its age.",
+      "enum": [
+        "observed",
+        "interpolated",
+        "gap_filled",
+        "suspect",
+        "missing"
+      ],
+      "type": "string"
+    },
+    "MarineVariable": {
+      "description": "Canonical variable names.\n\nAdapters translate their upstream naming (``SST``, ``analysed_sst``, ``thetao``,\n``VHM0``) into these, which is what lets one variable be served by several sources\nthat use different vocabularies.",
+      "enum": [
+        "sea_surface_temperature",
+        "chlorophyll",
+        "significant_wave_height",
+        "peak_wave_period",
+        "mean_wave_direction",
+        "swell_height",
+        "wind_speed",
+        "wind_direction",
+        "current_speed",
+        "current_direction",
+        "sea_surface_salinity",
+        "mixed_layer_depth",
+        "depth_of_20c_isotherm",
+        "sea_level"
+      ],
+      "type": "string"
+    },
+    "MeasurementKind": {
+      "description": "Whether the number describes the past or the future.\n\nThe reliability layer (PLAN.md Phase 10.1) backtests *forecasts* against buoy\n*observations*; without this distinction on the record, the two cannot be paired.",
+      "enum": [
+        "observation",
+        "analysis",
+        "forecast"
+      ],
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The common record every adapter emits (PLAN.md Phase 1.1).\n\nCarries its own provenance \u2014 which source, issued when, valid when, under what\nlicence \u2014 so a number can always be traced back without consulting the adapter that\nproduced it.",
+  "properties": {
+    "variable": {
+      "$ref": "#/$defs/MarineVariable"
+    },
+    "value": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "None only when quality is 'missing'."
+    },
+    "unit": {
+      "type": "string"
+    },
+    "lat": {
+      "maximum": 90,
+      "minimum": -90,
+      "type": "number"
+    },
+    "lon": {
+      "maximum": 180,
+      "minimum": -180,
+      "type": "number"
+    },
+    "depth_m": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Positive down; None = surface."
+    },
+    "valid_time": {
+      "description": "Instant the value describes.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "issued_time": {
+      "description": "Instant the source published it.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "source": {
+      "description": "The SourceDescriptor.source_id that produced this record.",
+      "type": "string"
+    },
+    "dataset_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Upstream dataset identifier, e.g. an ERDDAP griddap id."
+    },
+    "quality": {
+      "$ref": "#/$defs/DataQuality",
+      "default": "observed"
+    },
+    "kind": {
+      "$ref": "#/$defs/MeasurementKind",
+      "default": "observation"
+    },
+    "license": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "variable",
+    "value",
+    "unit",
+    "lat",
+    "lon",
+    "valid_time",
+    "issued_time",
+    "source",
+    "license"
+  ],
+  "title": "ObservationRecord",
+  "type": "object"
+}

@@ -17,7 +17,16 @@ import json
 from pathlib import Path
 from typing import Any
 
-from orca_schemas import ComponentHealth, ProblemDetail, RunContext, ServiceHealth
+from orca_schemas import (
+    BoundingBox,
+    ComponentHealth,
+    ObservationRecord,
+    ProblemDetail,
+    RunContext,
+    ServiceHealth,
+    SourceDescriptor,
+    TimeWindow,
+)
 from pydantic import BaseModel
 from pydantic.json_schema import models_json_schema
 
@@ -26,6 +35,10 @@ EXPORTED: tuple[type[BaseModel], ...] = (
     ComponentHealth,
     ServiceHealth,
     ProblemDetail,
+    BoundingBox,
+    TimeWindow,
+    SourceDescriptor,
+    ObservationRecord,
 )
 
 OUT_DIR = Path(__file__).parent / "generated"
@@ -68,8 +81,14 @@ def main() -> None:
         title="OrcaContracts",
     )
     strip_property_titles(bundle)
-    for name, definition in bundle.get("$defs", {}).items():
+    defs = bundle.get("$defs", {})
+    for name, definition in defs.items():
         definition["title"] = name
+    # Make every model reachable from the bundle root. json-schema-to-typescript emits
+    # an unreachable definition AND its $ref target separately, which produced duplicate
+    # aliases (DataQuality / DataQuality1); one reachable path per model avoids that.
+    bundle["type"] = "object"
+    bundle["properties"] = {name: {"$ref": f"#/$defs/{name}"} for name in sorted(defs)}
     _write(OUT_DIR / "contracts.json", bundle)
 
 

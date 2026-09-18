@@ -25,9 +25,6 @@ const ts = await compile(schema, "OrcaContracts", {
   bannerComment: BANNER,
   additionalProperties: false,
   declareExternallyReferenced: true,
-  // The bundle's models live under $defs with no root properties referencing them,
-  // so emit unreachable definitions or nothing would be generated.
-  unreachableDefinitions: true,
   style: { singleQuote: false },
 });
 

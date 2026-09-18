@@ -1,0 +1,34 @@
+{
+  "additionalProperties": false,
+  "description": "Geographic query extent in WGS84 degrees.",
+  "properties": {
+    "min_lat": {
+      "maximum": 90,
+      "minimum": -90,
+      "type": "number"
+    },
+    "max_lat": {
+      "maximum": 90,
+      "minimum": -90,
+      "type": "number"
+    },
+    "min_lon": {
+      "maximum": 180,
+      "minimum": -180,
+      "type": "number"
+    },
+    "max_lon": {
+      "maximum": 180,
+      "minimum": -180,
+      "type": "number"
+    }
+  },
+  "required": [
+    "min_lat",
+    "max_lat",
+    "min_lon",
+    "max_lon"
+  ],
+  "title": "BoundingBox",
+  "type": "object"
+}

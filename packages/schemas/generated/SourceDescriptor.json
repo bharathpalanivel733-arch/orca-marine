@@ -1,0 +1,137 @@
+{
+  "$defs": {
+    "BoundingBox": {
+      "additionalProperties": false,
+      "description": "Geographic query extent in WGS84 degrees.",
+      "properties": {
+        "min_lat": {
+          "maximum": 90,
+          "minimum": -90,
+          "type": "number"
+        },
+        "max_lat": {
+          "maximum": 90,
+          "minimum": -90,
+          "type": "number"
+        },
+        "min_lon": {
+          "maximum": 180,
+          "minimum": -180,
+          "type": "number"
+        },
+        "max_lon": {
+          "maximum": 180,
+          "minimum": -180,
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_lat",
+        "max_lat",
+        "min_lon",
+        "max_lon"
+      ],
+      "type": "object"
+    },
+    "Cadence": {
+      "additionalProperties": false,
+      "description": "How often a source refreshes, and how much lateness is tolerated.\n\nStaleness is a deterministic function of cadence and the clock \u2014 never a judgement\ncall, and never something an LLM decides.",
+      "properties": {
+        "period": {
+          "description": "Nominal interval between issues.",
+          "format": "duration",
+          "type": "string"
+        },
+        "grace": {
+          "default": "PT0S",
+          "description": "Lateness tolerated beyond one period before data counts as stale.",
+          "format": "duration",
+          "type": "string"
+        }
+      },
+      "required": [
+        "period"
+      ],
+      "type": "object"
+    },
+    "MarineVariable": {
+      "description": "Canonical variable names.\n\nAdapters translate their upstream naming (``SST``, ``analysed_sst``, ``thetao``,\n``VHM0``) into these, which is what lets one variable be served by several sources\nthat use different vocabularies.",
+      "enum": [
+        "sea_surface_temperature",
+        "chlorophyll",
+        "significant_wave_height",
+        "peak_wave_period",
+        "mean_wave_direction",
+        "swell_height",
+        "wind_speed",
+        "wind_direction",
+        "current_speed",
+        "current_direction",
+        "sea_surface_salinity",
+        "mixed_layer_depth",
+        "depth_of_20c_isotherm",
+        "sea_level"
+      ],
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Registry metadata describing what one source can serve.\n\nThe planner consults these to choose a source instead of calling a hard-wired\nendpoint (PLAN.md G3 / Phase 3.1); the degradation chain uses ``authority_rank`` to\ndecide what to fall back to.",
+  "properties": {
+    "source_id": {
+      "description": "Stable identifier, e.g. 'incois_erddap'.",
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "authority_rank": {
+      "description": "1 = authoritative Indian agency; higher = further down the fallback chain.",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "variables": {
+      "items": {
+        "$ref": "#/$defs/MarineVariable"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "coverage": {
+      "$ref": "#/$defs/BoundingBox"
+    },
+    "cadence": {
+      "$ref": "#/$defs/Cadence"
+    },
+    "license": {
+      "type": "string"
+    },
+    "requires_auth": {
+      "default": false,
+      "type": "boolean"
+    },
+    "attribution": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Text the UI must display when this source is used."
+    }
+  },
+  "required": [
+    "source_id",
+    "name",
+    "authority_rank",
+    "variables",
+    "coverage",
+    "cadence",
+    "license"
+  ],
+  "title": "SourceDescriptor",
+  "type": "object"
+}

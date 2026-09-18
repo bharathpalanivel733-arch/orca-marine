@@ -1,0 +1,20 @@
+{
+  "additionalProperties": false,
+  "description": "Half-open time extent ``[start, end)`` for a query.",
+  "properties": {
+    "start": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "end": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "start",
+    "end"
+  ],
+  "title": "TimeWindow",
+  "type": "object"
+}
