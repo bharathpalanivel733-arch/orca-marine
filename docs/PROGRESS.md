@@ -598,6 +598,101 @@ with a cost budget, multi-turn conversation state. This is where the kernels get
 inputs from the Phase 3 evidence layer, and where the first LLM in the system appears —
 strictly outside the numeric path.
 
+---
+
+## Phase 5 — Agentic orchestration (2026-09-19)
+
+### LangGraph is the engine; the fallback is real, not notional
+
+LangGraph 1.2.11 installs and runs on this Python — typed state, fan-out and streaming
+all verified. It is the engine. The documented FastAPI `DagEngine` fallback is also
+built, and `TestEngineParity` asserts both produce the same result, because the node
+functions are **pure and engine-agnostic**. That is the only honest way to offer a
+fallback: two implementations that drift are not a fallback, they are a second system.
+
+### The first LLM enters, outside the numeric path
+
+A planner LLM may *propose* a DAG. It is parsed into `PlanSpec`, which validates node
+names, tool allow-lists, dependencies and cycles on construction — an invalid plan cannot
+exist as an object. **Any** failure (malformed JSON, unknown node, forbidden tool, extra
+field, cycle) falls back to the deterministic `RulePlanner` and records the rejection.
+The rule planner is the *default*, not the fallback: for the five canonical intents the
+right DAG is known, and it means ORCA plans correctly with no API key at all.
+
+### Delivered
+
+- [x] **5.1 typed stateful graph** — LangGraph `StateGraph` plus the `DagEngine` fallback.
+- [x] **5.2 the full roster** — planner, marine data, weather, geospatial, ecosystem,
+      risk, route, reliability, verifier, response.
+- [x] **5.3 validated DAG + bounded budgets** — tokens, wall-clock and API calls, enforced
+      twice: **pruning** before execution (optional steps dropped, recorded with reasons)
+      and a **ledger** during it (skips further work once a ceiling is hit). Pruning alone
+      is optimistic; the ledger alone is too late.
+- [x] **5.4 parallel fan-out + tool allow-lists** — execution layers derived from the DAG;
+      each agent may call only its registered tools, enforced at plan validation *and* at
+      call time. A forbidden call raises `PermissionError`, deliberately **not**
+      `ToolFailure`: reaching outside an allow-list is our defect, not an upstream outage,
+      and must not be silently replanned around.
+- [x] **5.5 failure-aware replanning** — substitutions are **declared in advance**
+      (`APPROVED_SUBSTITUTIONS`), so a "dynamic replan" cannot invent a step nobody
+      approved. Safety-critical nodes have no substitute: when the safety kernel fails the
+      run abstains rather than routing around it. Replans are bounded.
+- [x] **5.6 multi-turn state + entity carry-over** — every slot records whether it came
+      from this turn, an earlier one, or the profile. A **time window is never carried**:
+      "and tomorrow?" changes the time and keeps the rest, so reusing yesterday's window
+      would answer the wrong day.
+- [x] **5.7 session memory** — vessel, home port, language, alert subscriptions.
+- [x] **5.8 streamable events** — plan ready, pruned, node started/finished, evidence
+      arrived, replanned, budget exhausted, run finished.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `pnpm verify` | **exit 0** — ruff clean, `mypy --strict` clean (53 files), `tsc` clean |
+| Unit tests | **309 passed** (was 269); 40 new in `services/orchestrator` |
+| `pytest -m stack` | **53 passed** |
+
+The three tests the phase named are all present and passing:
+`test_and_tomorrow_carries_location_and_vessel`, `TestBudgetPruning` (including that the
+engine emits a pruning event and the ledger halts work), and `TestFailureReplanning`
+(marine-data failure replans onto the approved substitute; a safety-kernel failure
+abstains instead).
+
+### Two bugs the tests caught
+
+1. **LangGraph fan-out was broken.** Plain `dict` state raised `InvalidUpdateError` the
+   moment the DAG fanned out — which is every real ORCA plan. Fixed with an
+   `Annotated[list[str], operator.add]` reducer. A second defect surfaced behind it: the
+   state TypedDict was defined inside a function, so `get_type_hints` could not resolve
+   `Annotated` under this module's postponed annotations. Moved to module level.
+2. **A pruning assertion was stronger than the design.** It expected the plan to fit the
+   budget after pruning, but only steps marked optional are pruned — when the remainder is
+   all non-optional it deliberately runs anyway with the ledger as backstop, rather than
+   dropping a step a kernel depends on. The test now asserts the estimate *falls* and
+   points at the ledger test for the other half.
+
+### Not done
+
+- **No LLM has been called.** `LlmPlanner` is implemented and its schema validation is
+  tested against hand-written payloads, but no API key exists here, so no real model has
+  ever produced a plan. The rule planner is what runs.
+- **Tools are injected, not wired.** The orchestrator is tested against stub tools; the
+  adapters from Phases 1-4 are not yet connected to the node registry. That wiring is
+  what makes the first end-to-end query possible and is the obvious next task.
+- **Fan-out is parallel in dependency terms, not concurrent.** Nodes in a layer have their
+  dependencies satisfied and could run concurrently; they currently run in sorted order
+  because the bodies are synchronous kernel calls and determinism matters more for replay.
+- Response synthesis is a stub: it assembles kernel results and provenance. Wording,
+  translation and TTS are Phase 7.
+
+### Next phase
+
+**Phase 6 — the trust layer**: verifier/critique with fresh context, conflict resolution
+with reliability-weighted source preference, evidence-sufficiency gating, and the
+provenance graph with deterministic replay. Phase 3's `as_of` querying and Phase 4's
+kernel fingerprints are the two pieces replay depends on, and both are in place.
+
 ## Git
 
 Repository initialized 2026-09-18 (`git init -b main`); Phase 0 committed as
