@@ -19,9 +19,10 @@ REASONING LAYER
     Knowledge Corpus (RAG / pgvector)
 
 TRUST LAYER
-  Verification & Fusion Middleware — 7-point integrity check · cross-domain evidence fusion
+  Verification & Fusion Middleware — evidence-sufficiency gating · reliability-weighted
+    conflict resolution · provenance graph with deterministic replay
     ★ Counterfactual Decision Simulator
-    ★ Adversarial Reliability Nucleus (Confidence Decay Model)
+    ★ Advisory Reliability Horizon (conformal intervals, backtested — Phase 10.1)
 
 DECISION & OUTPUT LAYER
   Inference & Decision Kernel — Weighted Feasibility Engine
@@ -29,10 +30,15 @@ DECISION & OUTPUT LAYER
   Decision Output Endpoint
 ```
 
-> **Note (from the gap-closure report):** "7-point integrity check" and "Adversarial Reliability Nucleus"
-> are vague marketing terms a scientific jury will challenge. Replace with a concrete, named design before
-> the finale — see `METHODS.md` §Provenance & Verifier for the recommended replacement
-> (deterministic provenance graph + evidence-sufficiency gating with abstention).
+> **RESOLVED (Phase 6, 2026-09-19).** The former "7-point integrity check" and "Adversarial
+> Reliability Nucleus" phrasings were vague marketing terms a scientific jury would challenge, and
+> they have been retired from this document. The trust layer as built is: seven **named**
+> deterministic checks, each with a stated threshold and the observed value it compared; an
+> independent critique that may only add doubt, never clear a check; reliability-weighted source
+> conflict resolution that widens the uncertainty interval and discloses the disagreement; and a
+> provenance graph (dataset → raw-payload hash → agent → formula+version → output) that a `run_id`
+> replays byte-for-byte from archived evidence. See `services/trust/` and `METHODS.md`
+> §Provenance & Verifier.
 
 ## 2. Technology stack (as pitched — technology choices, not yet all verified/built)
 
@@ -59,17 +65,34 @@ ROUTE & EXECUTE   → Only required agents activate, in parallel (Ocean, Fisheri
 COLLECT           → Auditable results → feeds Master Architecture
 ```
 
-## 4. Verification layer (from the PPT)
+## 4. Verification layer (as built — Phase 6)
 
 ```
-VERIFY  → 7-point check: source validity, timestamp freshness, spatial consistency,
-          missing-data flag, agent disagreement, model validity, evidence sufficiency
-FUSE & STRESS-TEST → combines evidence, tests recommendation against a counterfactual
-                      decision simulator → advisory reliability horizon
-GATE    → blocks recommendation if evidence insufficient → passes to Decision Engine
+VERIFY  → seven named deterministic checks, each with a stated threshold:
+          source_validity · freshness · spatial_consistency · missing_data ·
+          source_disagreement · formula_validity · evidence_sufficiency
+          Each reports the observed value it compared, so a refusal is explainable
+          by the number that caused it.
+
+CRITIQUE → independent review in a fresh context. It may ADD a caveat or escalate to
+          abstention; it may NOT clear a blocking check or turn an abstention into an
+          answer. The rules decide; the critique explains.
+
+FUSE    → source conflict resolved by backtested reliability for (region, variable,
+          lead-time). The uncertainty interval WIDENS to span the disagreement and the
+          conflict is disclosed to the user. Readings are never averaged: the mean of two
+          forecasts is a number neither source predicted.
+
+GATE    → abstain when evidence is stale, insufficient, or irreconcilably conflicting.
+          Abstention is a typed response carrying reasons, the checks, and a remedy —
+          not an error.
+
+RECORD  → provenance graph per run_id: dataset → raw-payload hash → agent →
+          formula+version → output. Replay re-derives from the archived bytes, so any
+          difference in output is a difference in code, not in the weather.
 ```
-(As noted above, replace the "7-point check" framing with the concrete provenance/gating design in
-`METHODS.md` before presenting to a technical jury.)
+Implemented in `services/trust/`. The old "7-point integrity check" and "Adversarial
+Reliability Nucleus" phrasings are retired (PLAN.md 6.5).
 
 ## 5. Recommended agent roster (gap-closure report — supersedes/extends the PPT's 5-agent mesh)
 

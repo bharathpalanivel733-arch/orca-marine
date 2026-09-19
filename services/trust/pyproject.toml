@@ -1,0 +1,38 @@
+[project]
+name = "orca-trust"
+version = "0.1.0"
+description = "ORCA trust layer: deterministic verification, conflict resolution, provenance and replay."
+requires-python = ">=3.12"
+# Deliberately light. The rules that decide whether ORCA answers must stay auditable and
+# runnable without a model runtime anywhere near them.
+dependencies = ["orca-schemas", "orca-kernels", "psycopg[binary]>=3.2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "ruff>=0.6", "mypy>=1.11"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["orca_trust"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Mirrors the root pytest.ini so running this package directly deselects the opt-in
+# suites too; an explicit -m on the command line still overrides it.
+addopts = "-m 'not stack and not live and not model'"
+markers = [
+    "stack: requires the local docker-compose dev stack",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ANN"]
+ignore = ["ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN"]

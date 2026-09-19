@@ -53,8 +53,12 @@ will manage" — but several things the jury will specifically probe are current
    not boundary proximity — this is a real gap.
 4. **Causal fish-productivity engine** — constrained causal DAG / Granger-causality, evidence-ranked
    hypothesis set, grounded in documented Arabian-Sea science.
-5. **Deterministic replay + provenance graph** — an auditable decision graph, replaces the vague
+5. **Deterministic replay + provenance graph** — an auditable decision graph, replacing the vague
    "7-point integrity check." Strongest trust signal for a government safety-system jury.
+   **BUILT (Phase 6, 2026-09-19):** `services/trust/` implements seven named deterministic checks,
+   reliability-weighted conflict resolution that widens uncertainty and discloses the disagreement,
+   abstention as a typed response, and a `run_id` provenance graph that replays byte-for-byte from
+   archived payloads. Gap G4 is closed.
 
 ## 5. Tier 2 — strong additions if time allows
 

@@ -707,6 +707,106 @@ with reliability-weighted source preference, evidence-sufficiency gating, and th
 provenance graph with deterministic replay. Phase 3's `as_of` querying and Phase 4's
 kernel fingerprints are the two pieces replay depends on, and both are in place.
 
+---
+
+## Phase 6 — Trust layer (2026-09-19)
+
+### The rules decide; the critique only adds doubt
+
+The ordering is the design. Seven **named** deterministic checks run first and set the
+verdict. The critique runs afterwards, in a fresh context that is shown the evidence and
+the check outcomes but **not** the reasoning that produced the answer — an adversarial
+critic inheriting the generator's assumptions inherits its blind spots.
+
+Its authority is asymmetric, and enforced in code rather than by convention: it **may**
+add a caveat or escalate an answer to an abstention; it **cannot** clear a blocking check,
+downgrade a severity, or turn an abstention into an answer. There is no code path back.
+A critique that can argue the system out of a refusal will eventually do so on the one
+query where the refusal was right.
+
+`NullCritic` is the default, so ORCA is fully functional with no model configured.
+
+### Delivered
+
+- [x] **6.1 seven named checks** — `source_validity`, `freshness`, `spatial_consistency`,
+      `missing_data`, `source_disagreement`, `formula_validity`, `evidence_sufficiency`.
+      Each states its threshold and reports the observed value it compared, so a refusal
+      is explainable by the number that caused it. Freshness applies **two** thresholds:
+      the source's own cadence (catches a feed that stopped) and a 12 h absolute limit
+      (catches a source whose cadence is simply too slow for the question asked).
+- [x] **6.2 conflict resolution** — variable-specific thresholds (0.5 m for wave height,
+      1.5 °C for SST, 45° for direction). The more reliable source wins, the uncertainty
+      interval **widens to span all readings**, and the conflict is **disclosed as a
+      caveat**. Averaging is deliberately not an option: the mean of a 1.2 m and a 2.4 m
+      forecast is a number neither source predicted, belongs to no provenance, and cannot
+      be replayed from either payload. Beyond 4× the threshold the disagreement is
+      irreconcilable and blocks.
+- [x] **6.3 abstention as a typed response** — a `TrustVerdict` with reasons, the full
+      check list, and a **remedy** saying what would have to change. Not an exception:
+      modelling it as one would push a deliberate refusal into a 5xx path where clients
+      retry. The model rejects incoherent states (a blocking check with an `answer`
+      status, an abstention with no reason).
+- [x] **6.4 provenance graph + replay** — dataset → raw-payload hash → agent →
+      formula+version → output, persisted per `run_id` (`0005_provenance.sql`). Edges may
+      only run forward; a backwards edge is rejected because an output cannot influence
+      its own inputs. The fingerprint **excludes wall-clock time**, since a replay records
+      new timestamps and a fingerprint that changed because of that would be useless.
+- [x] **6.5 legacy language retired** — "7-point integrity check" and "Adversarial
+      Reliability Nucleus" are gone from `ARCHITECTURE.md` §1 and §4, replaced by the
+      design as built. `CLAIMS.md` marks gap **G4 closed**. Remaining occurrences are
+      deliberate historical "replaces X" framing in the gap analysis, which is the record
+      of why the change was made.
+
+### Replay is re-derivation, not re-running
+
+The distinction is the whole value. Re-running a query tomorrow fetches a revised forecast
+— a different answer proves nothing and an identical one proves nothing either. Replay
+feeds the **archived bytes the original decision actually read** back through the same
+formula versions, so any difference in output is a difference in **code**, not in the
+weather. Three failure modes are reported distinctly rather than collapsed:
+
+| Outcome | Meaning |
+|---|---|
+| `IDENTICAL` | fingerprints match; the decision reproduced exactly |
+| `OUTPUT_DIFFERS` | same inputs, different result — names the output that moved |
+| `FORMULA_CHANGED` | a version was bumped; a difference is **expected**, not tampering |
+| `EVIDENCE_TAMPERED` | stored bytes no longer hash to the recorded digest |
+| `EVIDENCE_UNAVAILABLE` | the archived payload is missing |
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `pnpm verify` | **exit 0** — ruff clean, `mypy --strict` clean (62 files), `tsc` clean |
+| Unit tests | **361 passed** (was 309); 52 new in `services/trust` |
+| `pytest -m stack` | **62 passed** (was 53); 9 new against real PostgreSQL |
+
+`test_replay_returns_identical_output` is the Phase 6.4 assertion: a run re-derived from
+its archived payload reproduces the original fingerprint exactly. `TestReplayFromTheDatabase`
+does the same round trip through persistence — record, load, replay — which is what makes
+the claim true months later rather than only within a process.
+
+### Not done
+
+- **No LLM critique has been run.** `LlmCritic` is implemented and its constraints are
+  tested (transport failure swallowed, unexplained escalation dropped), but no API key
+  exists here, so `NullCritic` is what executes. The verdict does not depend on it.
+- **The trust layer is not yet wired into the orchestrator.** `services/trust` is a
+  library with its own tests; the Phase 5 verifier node still uses its own simpler check.
+  Connecting them is the obvious next task and belongs with the tool wiring.
+- **Reliability is still an input.** Conflict resolution ranks by a reliability figure it
+  is given; Phase 10.1 is what produces a backtested one. Until then it is the registry's
+  prior, labelled as a prior.
+- **`KNOWN_SOURCES` and the conflict thresholds are engineering judgements**, not sourced
+  constants. Each is set near the point where a difference would change a decision, and
+  they deserve review with a domain expert before the finale.
+- The counterfactual "what-if" simulator (PLAN.md 10.3) is **not** part of Phase 6.
+
+### Next phase
+
+**Phase 7 — multilingual voice I/O**: ASR, IndicTrans2, and the TTS path that the Tamil
+voice demo turns on.
+
 ## Git
 
 Repository initialized 2026-09-18 (`git init -b main`); Phase 0 committed as
