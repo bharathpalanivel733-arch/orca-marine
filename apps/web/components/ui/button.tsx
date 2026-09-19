@@ -13,6 +13,9 @@ const buttonVariants = cva(
         outline:
           "border border-[var(--color-border)] bg-transparent hover:bg-[var(--color-muted)]",
         ghost: "hover:bg-[var(--color-muted)]",
+        // Used by the recording state of the voice button: while the mic is open the
+        // control must read as "live" at a glance, from arm's length, in sunlight.
+        destructive: "bg-red-600 text-white hover:bg-red-700",
       },
       size: {
         default: "h-10 px-4 py-2",

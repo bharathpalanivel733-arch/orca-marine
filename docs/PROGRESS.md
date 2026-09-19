@@ -807,6 +807,351 @@ the claim true months later rather than only within a process.
 **Phase 7 — multilingual voice I/O**: ASR, IndicTrans2, and the TTS path that the Tamil
 voice demo turns on.
 
+## Phase 7 — Multilingual voice I/O (2026-09-19)
+
+### Nothing on the audio path may write a sentence or change a number
+
+Voice is where ORCA's central discipline is easiest to lose. Audio carries no visible
+provenance: a clip from the third fallback provider sounds exactly as authoritative as one
+from the first, and a wave height mangled by a translator is simply what the fisherman
+hears. There is no transcript to check it against unless one is deliberately shown.
+
+So the two guarantees are enforced structurally, not by convention:
+
+1. **Every utterance is a pre-translated template with slots filled from kernel output.**
+   No model writes a sentence in any language. Translations are produced offline with
+   IndicTrans2 and reviewed before entering the catalogue; at runtime there is no
+   translator, and a language with no entry for a template falls back to English **and says
+   so** rather than improvising.
+2. **`normalize_for_speech` verifies that the numeric tokens are byte-identical before and
+   after** unit expansion, raising `NumericDriftError` if not. The check runs on every
+   call, not only in tests. It caught a real defect during development: a wave-height range
+   ("1.5-2.0 m") was being parsed as a negative number, so the range expansion looked like
+   numeric drift. The pattern now refuses to read a hyphen between two digits as a sign.
+
+### Delivered
+
+- [x] **7.1 PWA audio capture** — press-and-hold (not tap-to-toggle: a toggle left open on
+      a boat records fifteen seconds of engine noise and the user walks away believing they
+      asked a question). Decoded and resampled to 16 kHz mono PCM16 in an
+      `OfflineAudioContext` so every handset uploads the same shape, energy-VAD trimmed at
+      the ends only — trimming mid-sentence silence would splice two halves of a sentence
+      together — and capped at 15 s by a timer, with the same cap enforced server-side.
+- [x] **7.2 ASR endpoint** — `POST /api/v1/speech/transcribe`, returning
+      `{text, lang, confidence, alternatives[]}` plus the full provider trail. Chain:
+      Bhashini ULCA → self-hosted IndicWhisper → browser Web Speech transcript.
+- [x] **7.3 language + code-mix detection** — deterministic and script-based. Indic scripts
+      occupy disjoint Unicode blocks, so Tamil identifies itself by codepoint with no model
+      and no network call. Romanized Tanglish/Hinglish carries no script signal, so a
+      function-word lexicon separates it from English; content words ("boat", "wave") are
+      excluded because they are borrowed into all three. Code-mixing is measured as a
+      *share*, not flagged on one loanword. A pinned conversation language is only
+      overridden by a confident script switch, so answering "ok" mid-conversation cannot
+      turn a Tamil session into an English one.
+- [x] **7.4 place-name normalization** — 27-entry harbour gazetteer with native-script and
+      romanization aliases, exact match then length-scaled bounded edit distance.
+      **Ambiguity is returned, never resolved**: two candidates within the threshold produce
+      a clarifying question, because guessing wrong answers confidently about a different
+      stretch of sea.
+- [x] **7.5 deterministic templating** — 12 templates (safety verdict ×3, zone
+      recommendation, geofence ×2, abstention ×3, alert ×3) in English, Tamil and Hindi.
+      `validate_catalogue` asserts every language of every template declares exactly the
+      same slots — a slot dropped in translation is a number the listener never hears, and
+      nothing else would catch it.
+- [x] **7.6 TTS endpoint** — `POST /api/v1/speech/synthesize`. Chain: cache → Bhashini TTS
+      → Indic-Parler-TTS → pre-generated cache. Number/unit normalizer runs server-side
+      before synthesis so it applies to every caller. Per-language voice with configurable
+      gender and speed; a voice whose language differs from the text is refused.
+- [x] **7.7 audio cache + pre-generation** — key `sha256(normalized_text) + lang + voice +
+      speed`. The text hashed is what the synthesizer receives, not the display sentence:
+      hashing the display text would produce keys the live path never looks up, and the
+      outage protection would be imaginary. `scripts/pregenerate_audio.py` renders the
+      rehearsed script and every standard alert phrase and reports coverage per language.
+- [x] **7.8 playback UX** — one process-wide playback controller, because there is one pair
+      of ears: starting a clip stops the previous one structurally rather than by each
+      component remembering to. Barge-in on mic press. Play/pause/replay, a visible "what
+      was spoken" transcript, and a "read aloud" control usable on any card, keyboard
+      reachable with `aria-pressed` and `aria-live`.
+- [x] **7.9 alert TTS** — synthesized at alert creation in the recipient's language and
+      attached to the push payload, because fetching audio afterwards fails at exactly the
+      moment the device has no signal. Text and audio come from one `RenderedMessage`, so a
+      recipient who reads and one who listens get the same warning. Only warning templates
+      may be pushed; an alert interrupts someone at sea and a zone recommendation does not
+      earn that.
+- [x] **7.10 language coverage** — English, Tamil and Hindi fully tested; Telugu, Malayalam,
+      Odia, Bengali, Gujarati, Marathi and Kannada declared with profiles, script detection
+      and a default voice each. Marathi shares Devanagari with Hindi, so script alone cannot
+      separate them — the user's stored preference resolves it rather than a coin flip.
+
+### The Bhashini-outage scenario is exercised, not described
+
+PDF risk #4 is Bhashini quota exhaustion mid-demo. The documented answer is a fallback
+hierarchy ending in a pre-generated cache, and a documented answer nobody has run is a hope.
+`test_a_full_bhashini_outage_still_speaks_from_the_pre_generated_cache` simulates it: every
+live provider unavailable, the cache populated, and the clip still plays with its tier
+reported. The cache appears **both first and last** in the chain — first as "have we said
+this before", last as "we cannot synthesize, is this one of the sentences we prepared".
+
+The limit of that guarantee is stated precisely, because overstating it would collapse on
+stage: **every rehearsed sentence and every standard alert plays with no network at all.**
+A novel sentence about this morning's waves was not pre-generated — those numbers did not
+exist when the job ran — and needs a synthesizer from some tier.
+`test_an_unprepared_sentence_with_everything_down_fails_loudly` pins that down.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `ruff check` | clean across `services packages scripts` |
+| `mypy --strict` | clean, **75 source files** (was 62) |
+| `tsc --noEmit`, `eslint` | clean (`apps/web`) |
+| Unit tests | **608 passed** (was 361) — 228 in `services/speech`, 19 in `services/api` |
+| `pytest -m stack` | **62 passed**, unchanged — Phase 7 adds no stack-dependent tests |
+| `python scripts/pregenerate_audio.py` | script renders cleanly in all three rehearsed languages |
+
+### Not done — and not claimed
+
+- **No speech provider has ever been called.** Bhashini needs a ULCA key this repository
+  does not hold; IndicWhisper and Indic-Parler-TTS need weights that are not installed. Both
+  are implemented against their documented request shapes, and what is *tested* is the
+  request body, the response parsing (including 429 → `quota_exceeded`) and the resulting
+  fallback — **not** a live call. `GET /api/v1/speech/capabilities` reports this rather than
+  letting anyone assume otherwise.
+- **The Tamil and Hindi template wordings are IndicTrans2 drafts that no native speaker has
+  reviewed.** They are marked `INDICTRANS2_DRAFT` in the catalogue, `push_payload()` carries
+  `translation_reviewed: false`, and a test locks that claim in place so marking them
+  reviewed is a deliberate change rather than a quiet edit. The structure is correct and the
+  numbers are safe; the phrasing needs a speaker's eye before a jury hears it. The
+  transliterated Tamil unit forms ("மீட்டர் பெர் செகண்ட்") are the most obvious candidates
+  for correction.
+- **The gazetteer's 27 coordinates are approximate harbour positions at 2 dp (~1 km) and
+  have not been reconciled against an authoritative register.** `COORDINATE_PRECISION_NOTE`
+  states this to callers. They are adequate for selecting a forecast grid cell; **nothing
+  here feeds a boundary verdict** — Phase 2 geofencing uses the surveyed treaty geometry.
+  The 1,223 INCOIS PFZ coastal nodes arrive with their own provenance in Phase 1.6.
+- **The audio cache is in-process, not MinIO.** `ObjectStoreAudioCache` is implemented
+  against the same interface and the pre-generation script can target it
+  (`--object-store`), but the API router holds an `InMemoryAudioCache`, so cached clips do
+  not survive a restart or span replicas. Wiring the object store in is small and belongs
+  with the deployment work.
+- **LLM arbitration of romanized code-mix is a seam, not an implementation.** PLAN.md 7.3
+  names Haiku 4.5 for this; `CodeMixArbiter` is the interface and `LexiconArbiter` is the
+  deterministic default. A tie it cannot break defers to the stored preference.
+- **The speech path is not wired into the orchestrator.** `services/speech` is a library
+  with its own tests and its own endpoints; the templates are not yet filled from live
+  `KernelResult` objects, and `/voice` renders sample text labelled as such on screen.
+  Connecting them is Phase 8 work.
+- **Nothing has been tested on a real low-end Android device**, which is what PLAN.md 7.1
+  actually asks for. The capture path is written for it — fixed resample, hard cap,
+  press-and-hold — but browser audio behaviour varies enough that this deserves a real
+  handset before the finale.
+
+### Next phase
+
+**Phase 8 — proactive alerting and delivery**: the scheduled geofenced evaluation loop, CAP
+XML, and the push channel the alert audio from 7.9 attaches to (gaps G5, G9, M3).
+
+## Phase 8 — Proactive alert subsystem (2026-09-20)
+
+### The one output the user cannot choose not to receive
+
+Every other part of ORCA answers a question, and the person who asked it checks the answer.
+This part decides on a schedule that somebody needs to know something now, at 4 a.m., while
+they are busy. That inverts the burden of proof, and three properties follow from it:
+
+1. **Every alert is one rule's arithmetic.** Eight named triggers in
+   `services/alerts/orca_alerts/triggers.py`, each recording the observed value, the
+   threshold, and where the threshold came from. CAP severity, urgency and certainty are
+   **lookup tables**, not judgements. No language model decides whether to warn anybody or
+   how urgently — the Phase 4 rule about numbers, carried into the part of the system that
+   speaks unprompted.
+2. **Suppression protects the channel; escalation always beats suppression.** Alert fatigue
+   is what makes a proactive system worse than none. But suppressing while conditions worsen
+   is how this component could get someone killed, so a severity rise goes out immediately
+   as a CAP `Update` regardless of any window.
+3. **Sent is not delivered.** The router attempts every channel and records each outcome, so
+   an alert that reached nobody is visible as such rather than counted as handled.
+
+### Delivered
+
+- [x] **8.1 scheduled evaluation** — `AlertScheduler.tick()` is a **pure function of its
+      inputs and an explicit clock**: no Celery import, no ambient `datetime.now()`. Running
+      a function every five minutes is solved by any of four schedulers; whether the
+      evaluation is *correct* is not, and binding the logic to a framework would make it
+      testable only by running one. Three rule families per PLAN.md 8.1: (a) IMD
+      `cyclone_wind` / `cyclone_cou` containment, (b) wave/wind/lightning/squall against the
+      vessel's own `CLASS_THRESHOLDS`, (c) geofence proximity and predictive drift from the
+      Phase 2 treaty geometry.
+- [x] **8.2 CAP 1.2 XML** — OASIS namespace, schema child ordering (validators reject
+      reordered children), `<polygon>` closure, offset timestamps with `Z` refused,
+      one `<info>` block per language. Severity from the rule outcome; urgency from the
+      rule's *time horizon* — drift with 6 minutes left is `Immediate`, a cone containment is
+      `Future`; certainty from the *kind of evidence* — a published-polygon containment is
+      `Observed`, a forecast threshold is `Likely`, and a drift projection is **never**
+      `Observed` because a model's extrapolation is not an observation.
+- [x] **8.3 delivery + TTS attachment + dedup + escalation** — in-app, WebSocket, Web Push
+      (RFC 8030 urgency from severity), FCM (data-only, 4 KB budget enforced at build time)
+      and SMS, gated to Severe-and-above by policy and recorded as a *decision* rather than a
+      failure. The router tries **every** channel, unlike the speech chain which stops at the
+      first success: there is no way to know which device the fisherman is looking at.
+      Alert audio comes from the Phase 7 chain, and the spoken text is the *normalized*
+      string, so the CAP `<description>` and the voice carry identical figures.
+- [x] **8.4 disaster-management workflows** — boat recall (only vessels at sea, only inside
+      the area, with an enumerable recipient list), harbour advisory (open/restricted/closed,
+      with reopening as an explicit `AllClear`), cyclone-shelter guidance, and authority
+      broadcast to a region or a named fleet. All four carry `issued_by` and attribute the
+      CAP `senderName` to the **authority, not ORCA** — attributing a government instruction
+      to a hackathon project would be improper.
+- [x] **8.5 offshore hand-off** — `handoff.py` states, in version-controlled code,
+      that **ORCA is not an offshore channel**. Beyond ~10 km it warns; beyond ~20 km it says
+      plainly "ORCA cannot reach you at this distance from shore. It is not a satellite
+      service." and routes to GEMINI (GAGAN/NavIC), DAT-SG and Sagarmitra. The wording is
+      blunt rather than hedged because "coverage may be limited" reads as boilerplate and
+      gets ignored. `HANDOFF_STATEMENT` is the sentence for the UI and the stage, asserted by
+      a test so it cannot quietly drift into an overstatement.
+- [x] **8.6 alert audit** — every evaluation is recorded, **including the suppressed and
+      clear ones**, with the threshold that fired and a Phase 6 provenance graph
+      (dataset → payload hash → agent → formula+version → output). An audit that records only
+      what was sent cannot answer *why was this boat not warned*, which is the question that
+      actually gets asked.
+
+### Design decisions worth defending
+
+**Unevaluated is not clear.** Every rule with an optional driver returns `UNEVALUATED` when
+it cannot see it. Not seeing lightning data is not the same as seeing no lightning, and
+collapsing the two is how a system stays quiet through the one storm it existed for.
+
+**Skips are reported per tick.** "No alerts sent" means two opposite things — conditions were
+safe, or nobody could be assessed — and `TickAudit.summary()` separates them.
+
+**Containment is exact, not a bounding box.** IMD wind radii and cones are genuinely
+non-convex; a box would warn boats that are not in the field and, because the cone narrows
+towards the present position, would look reassuring exactly where the storm is. Ray casting
+in `conditions.py` is short enough to read in full, which matters more than speed for
+something that decides whether to wake a fisherman.
+
+**Vessel-relative, not a single sea-state band.** At 2.2 m an FRP vallam is past its avoid
+threshold and a mechanized trawler is not even at caution. One band for everyone would have
+to either terrify the trawler or fail to warn the vallam.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `pnpm verify` | **exit 0** |
+| `ruff check` | clean across `services packages scripts` |
+| `mypy --strict` | clean, **87 source files** (was 75) |
+| Unit tests | **853 passed** (was 608) — 245 in `services/alerts` |
+| `pytest -m stack` | **62 passed**, unchanged — Phase 8 adds no stack-dependent tests |
+
+The four areas named in the phase request are covered directly: CAP structure
+(`test_cap.py`, 46 tests), deduplication and escalation (`test_dedup_and_escalation.py`,
+31 tests), and alert audit records (`test_audit.py`), plus triggers, delivery, workflows,
+hand-off and an end-to-end scheduler suite.
+
+### Not done — and not claimed
+
+- **No alert has ever been delivered anywhere.** There is no FCM service account, no VAPID
+  key and no SMS gateway in this repository. Every transport reports itself unconfigured;
+  what is tested is the payload shapes, the header/priority mapping, the 4 KB budget, the
+  expired-token path and the resulting routing behaviour — **not** a live push.
+- **No real IMD cyclone GeoJSON has been ingested.** The containment rules are tested against
+  constructed polygons, including a deliberately non-convex one. Wiring `cyclone_wind` /
+  `cyclone_cou` to the Phase 1.3 IMD adapter is the obvious next connection, and it needs the
+  IMD API key that Phase 0 found is now required.
+- **No scheduler runs the tick.** `AlertScheduler.tick()` is called by tests only. Choosing
+  Celery beat or Cloud Scheduler and wiring the cadence is deployment work, deliberately left
+  out so the evaluation logic stays framework-free.
+- **The deduplicator is in-process.** It must move to Redis before multiple workers or a
+  restart can be tolerated — until then, a restart re-sends every active alert once. The
+  interface is unchanged by that move; the policy is what the tests verify.
+- **The lightning, squall and drift thresholds are engineering judgements, not sourced
+  constants.** Each is named in `triggers.py` with its reasoning and deserves review with a
+  fisheries officer or NIOT before operational use. The wave and wind thresholds are the
+  Phase 4 vessel-class numbers, which carry their own sourcing caveats.
+- **`SAMPLE_SHELTERS` is three hand-entered entries marked unverified**, and the guidance says
+  so in its caveat. A real deployment must load the state disaster-management authority's own
+  register: sending someone to a locked building in a cyclone is worse than naming a harbour.
+- **The 10/20 km coverage boundary is an estimate**, not a measured figure, and varies by
+  operator and terrain. It is set conservatively — warning early — because telling somebody
+  they are covered when they are marginal is the error that matters.
+- **No UI yet.** The hand-off notice, the alert inbox and the authority console are Phase 9
+  (persona views); this phase produces the data they will render.
+- **Nothing is persisted.** `TickAudit` and `AlertAuditRecord` are in-memory structures with a
+  flat `as_dict()` ready for storage; there is no `0006_alerts.sql` and no `AlertStore`.
+  Persisting them belongs with the deployment work, alongside the Redis move.
+
+### Next phase
+
+**Phase 9 — interfaces and persona views**: the four stakeholder views (fisherfolk,
+researcher, coastal authority, maritime operator), which is where the alert inbox, the
+authority broadcast console and the offshore hand-off notice get rendered (gaps G10, G11).
+
+## Final audit — Phases 6, 7 and 8 (2026-09-20)
+
+A read-and-re-derive pass over Phases 6–8 before pushing, rather than a re-read of the
+completion notes above. Implementation inspected directly, guarantees probed adversarially,
+and the whole suite re-run against the real dev stack.
+
+### Verified by inspection, not by report
+
+| Claim | How it was checked |
+|---|---|
+| Critique cannot override a blocking check | `apply_critique` has **no code path** that clears a check, lowers a severity or turns an abstention into an answer — it only appends caveats and escalates. The guarantee is structural, not a policy note. |
+| Fingerprint excludes wall-clock time | Read `ProvenanceGraph.fingerprint`: hashes node kind/label/attributes and edges only. A replay recording new timestamps still reproduces the fingerprint. |
+| Tamper and formula-change are distinct outcomes | `ReplayOutcome` carries `EVIDENCE_TAMPERED`, `FORMULA_CHANGED`, `OUTPUT_DIFFERS`, `EVIDENCE_UNAVAILABLE` as separate states. |
+| No LLM on the speech or alert path | `grep` for `anthropic`/`openai`/`groq`/`torch`/`transformers` across `orca_speech` and `orca_alerts`: **no matches**. No runtime `translate(` call exists. |
+| Numbers survive normalization | 10 adversarial strings × 3 languages — attached units (`12kn 3.4m 28degC 65%`), ranges, genuine negatives, two-decimal values, comma separators, clock times. **0 drift, 0 unexpected raises.** |
+| Phase 6+7+8 compose | End-to-end probe: rough sea → trigger fires on the unrounded kernel value → CAP 1.2 validates and parses under the OASIS namespace → the CAP description and the spoken text carry identical figures → the provenance graph fingerprints stably and a repeat tick reproduces both the fingerprint and the alert identifier. |
+| No Phase 9 work | `apps/web` has two pages (status, `/voice`) and three components, all Phase 7.1/7.8. No map, no persona views, no researcher/authority console, no `maplibre`. |
+
+### Errors found and fixed
+
+1. **`scripts/pregenerate_audio.py` read the wrong environment variable names.** It used
+   `S3_ACCESS_KEY` / `S3_SECRET_KEY`, but `.env.example` and the rest of the repo use
+   `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`. With `--object-store` it would have fallen
+   back to `minioadmin` defaults and failed to authenticate against the dev MinIO — and
+   failed at upload time rather than at startup. Fixed, with the defaults corrected to the
+   dev-stack credentials.
+2. **`.env.example` was stale for Phase 7.** The speech section still said "NOT used in
+   Phase 0", and `SPEECH_AUDIO_BUCKET` was missing entirely despite the pre-generation
+   script reading it. Both corrected.
+3. **`ARCHITECTURE.md` could be misread as an as-built claim.** Section 5's "Key tools"
+   column and section 6's lifecycle name Bhashini and other providers; neither was labelled.
+   Both now carry a one-line note that they are design intent, that no external provider has
+   been called with credentials as of Phase 8, and that `PROGRESS.md` is authoritative for
+   as-built status. Section 4 remains the one as-built section.
+
+Nothing else required a change. One thing looked like a defect and is not: a 2.85 m forecast
+is spoken as "2.9 m". The trigger compares the **unrounded** value against the threshold, and
+rounding happens once, visibly, in `format_measurement` at one decimal place — the precision a
+spoken wave height should carry. The invariant that matters holds: the CAP `<description>` and
+the audio carry the same string.
+
+### Test evidence at the point of push
+
+| Suite | Result |
+|---|---|
+| Full unit suite | **853 passed**, 71 deselected |
+| Stack suite (real PostgreSQL 16 + PostGIS + TimescaleDB + pgvector + MinIO) | **62 passed** |
+| Phase 6 — `services/trust/tests` | 52 unit + **9 stack** against real PostgreSQL |
+| Phase 7 — `services/speech/tests` | 228 |
+| Phase 7 — `services/api/tests/test_speech_endpoints.py` | 19 |
+| Phase 8 — `services/alerts/tests` | 245 |
+| `ruff check` | clean |
+| `mypy --strict` | clean, 87 source files |
+| `tsc --noEmit`, `eslint` | clean |
+| `pnpm verify` | exit 0 |
+
+### Honest-limits audit
+
+Re-confirmed that no document claims any of the following, and that each is stated as a
+limitation in the phase entries above: live Bhashini integration; live ASR or TTS provider
+execution; live FCM, Web Push or SMS delivery; real IMD ingestion; a running production
+scheduler; Redis-backed deduplication; or alert database persistence. The deduplicator is
+in-process, alert audit records are in-memory with a flat `as_dict()` ready for storage, and
+there is no `0006_alerts.sql` — all three are recorded as not done.
+
 ## Git
 
 Repository initialized 2026-09-18 (`git init -b main`); Phase 0 committed as
@@ -837,9 +1182,11 @@ import `types.ts`, so a fresh clone must not require a Python environment first.
 
 See `CLAIMS.md` for full detail on each. Checklist form for tracking:
 
-- [ ] **G1** — Automatic language + code-mixed detection, voice-first interaction (Bhashini/AI4Bharat:
-      IndicTrans2, IndicASR/IndicWav2Vec, IndicWhisper, Indic-Parler-TTS). PPT currently only lists
-      multilingual support generically.
+- [x] **G1** — Automatic language + code-mixed detection, voice-first interaction. Built in Phase 7:
+      deterministic script-based detection, romanized code-mix handling, ASR/TTS endpoints behind the
+      documented fallback chains, pre-translated templates and a pre-generated audio cache. **No speech
+      provider has been called live** (no ULCA key, no self-hosted weights) and the Tamil/Hindi wordings
+      are unreviewed IndicTrans2 drafts — see the Phase 7 entry above.
 - [ ] **G2** — Explicit multi-turn conversation-state schema with entity carry-over
       (location/time/vessel) and clarifying-question behaviour.
 - [ ] **G3** — Tool/dataset registry with capability metadata for autonomous dataset discovery (vs.
@@ -847,17 +1194,20 @@ See `CLAIMS.md` for full detail on each. Checklist form for tracking:
 - [ ] **G4** — Concrete provenance graph (dataset → timestamp → agent → formula → output) +
       evidence-sufficiency gating with abstention, replacing the vague "7-point integrity check" /
       "Adversarial Reliability Nucleus" framing.
-- [ ] **G5** — Scheduled, geofenced proactive alert-evaluation loop that *pushes* warnings (architecture
-      is currently pull/query-centric only).
+- [x] **G5** — Scheduled, geofenced proactive alert-evaluation loop that *pushes* warnings. Built in
+      Phase 8: eight deterministic triggers, CAP 1.2 emission, deduplication with unconditional
+      escalation, and delivery abstractions. **Nothing has been delivered anywhere** (no FCM account,
+      no VAPID key, no scheduler running the tick) — see the Phase 8 entry above.
 - [ ] **G6** — Concrete PostGIS distance-to-IMBL math with predictive drift warning (currently a USP
       slide with unspecified math).
 - [ ] **G7** — Named route-optimization algorithm + cost surface (currently just a "Safe Route" output
       label).
 - [ ] **G8** — Causal engine grounded in real oceanographic drivers (SST anomaly, chlorophyll, upwelling,
       marine heatwave, freshwater flux, overfishing) rather than a generic LLM guess.
-- [ ] **G9** — Disaster-Management theme integration: IMD RSMC cyclone bulletins, INCOIS
-      tsunami/storm-surge/high-wave/swell alerts, NDMA/SACHET, CAP XML standard, boat-recall/harbour-
-      advisory/cyclone-shelter workflows.
+- [x] **G9** — Disaster-Management theme integration. Built in Phase 8: CAP 1.2 XML interoperable with
+      NDMA/SACHET conventions, plus boat-recall, harbour-advisory, cyclone-shelter and authority-
+      broadcast workflows. **No real IMD cyclone GeoJSON has been ingested** and the shelter registry is
+      three unverified sample entries — see the Phase 8 entry above.
 - [ ] **G10** — Four persona views (fisherfolk, researcher, coastal authority/disaster agency, maritime
       operator) — currently fisherman-centric only.
 - [ ] **G11** — A slide/demo beat for each SIH evaluation dimension (see `DEMO.md` §4).

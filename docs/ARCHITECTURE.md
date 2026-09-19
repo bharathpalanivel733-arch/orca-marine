@@ -96,6 +96,12 @@ Reliability Nucleus" phrasings are retired (PLAN.md 6.5).
 
 ## 5. Recommended agent roster (gap-closure report — supersedes/extends the PPT's 5-agent mesh)
 
+> **Design intent, not as-built status.** The "Key tools" column names the service each agent is
+> *designed* to call. As of Phase 8 no external provider has been called with credentials —
+> no Bhashini key, no IMD key, no LLM API key, no push credentials. `PROGRESS.md` is the
+> authoritative record of what is actually wired up, per phase, and section 4 above is the one
+> part of this document written as-built.
+
 | Agent | Responsibility | Key tools |
 |---|---|---|
 | Planner / Orchestrator | intent → DAG, tool selection, budget | LLM + tool/dataset registry |
@@ -124,6 +130,10 @@ on a shared, typed state object (Pydantic).
 - **Never let the LLM invent a safety number — it only explains numbers the deterministic kernel computed.**
 
 ## 6. Request lifecycle (golden path, from the gap-closure report)
+
+> Design intent. Steps 1 and 11 (ASR/TTS) are implemented in `services/speech` behind the
+> documented fallback chains, but **no speech provider has been called live** — see PROGRESS.md.
+
 
 1. Input (text or voice, any Indian language) → language detection + ASR (Bhashini/IndicWhisper) →
    normalize to a canonical intent request.

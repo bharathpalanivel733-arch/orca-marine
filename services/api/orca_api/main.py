@@ -20,7 +20,7 @@ from orca_api.observability import (
     install_run_id_middleware,
     setup_tracing,
 )
-from orca_api.routers import health
+from orca_api.routers import health, speech
 
 
 def create_app() -> FastAPI:
@@ -54,6 +54,7 @@ def create_app() -> FastAPI:
     install_run_id_middleware(app)
     app.state.tracing_enabled = setup_tracing(app, settings)
     app.include_router(health.router)
+    app.include_router(speech.router)
     return app
 
 

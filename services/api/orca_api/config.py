@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = "http://localhost:9000"
     s3_bucket: str = "orca-cache"
 
+    # Bhashini ULCA credentials (PLAN.md Phase 7.2, 7.6). Absent by default, and the
+    # speech chains treat absence as "provider unavailable" rather than as an error — the
+    # fallback hierarchy and the pre-generated audio cache carry the demo without them.
+    bhashini_ulca_api_key: str = ""
+    bhashini_user_id: str = ""
+    speech_audio_bucket: str = "orca-audio"
+
     otel_enabled: bool = False
     otel_exporter_otlp_endpoint: str = ""
     otel_service_name: str = "orca-api"
