@@ -14,7 +14,7 @@
     "schemas:generate": "pnpm --filter @orca/schemas generate",
     "lint": "pnpm --filter @orca/web lint && python -m ruff check services packages scripts",
     "format": "python -m ruff format services packages scripts",
-    "typecheck": "pnpm --filter @orca/web typecheck && python -m mypy services/api/orca_api packages/schemas/orca_schemas services/ingest/orca_ingest services/geo/orca_geo services/evidence/orca_evidence",
+    "typecheck": "pnpm --filter @orca/web typecheck && python -m mypy services/api/orca_api packages/schemas/orca_schemas services/ingest/orca_ingest services/geo/orca_geo services/evidence/orca_evidence services/kernels/orca_kernels",
     "test": "python -m pytest -q",
     "verify": "pnpm lint && pnpm typecheck && pnpm test",
     "setup:py": "python -m venv .venv && python -c \"import subprocess,sys,os; py=os.path.join('.venv','Scripts','python.exe') if os.name=='nt' else os.path.join('.venv','bin','python'); subprocess.check_call([py,'-m','pip','install','-e','packages/schemas','-e','services/api[dev,otel]','-e','services/agents','-e','services/ingest'])\"",

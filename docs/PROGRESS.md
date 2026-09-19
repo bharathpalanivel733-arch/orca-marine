@@ -506,6 +506,98 @@ documents with no region codes stay admissible everywhere.
 over the record contract from Phase 1, the geometry from Phase 2 and the evidence access
 from Phase 3.
 
+---
+
+## Phase 4 — Deterministic decision kernels (2026-09-19)
+
+### The no-LLM guarantee is mechanical, not a policy statement
+
+`services/kernels` has **no model runtime in its dependency tree** — it depends only on
+`orca-schemas` and `typing-extensions`. Every kernel returns a `KernelResult` carrying
+`value`, `inputs[]`, `formula_id`, `formula_version`, `staleness` and `abstain_reason`,
+and `KernelResult.fingerprint()` hashes formula identity plus inputs plus value. If
+anything — an LLM or otherwise — rewrote a number after the fact, the recorded inputs
+would no longer reproduce it and `verify()` fails. That is asserted in tests rather than
+asserted in prose.
+
+### Delivered
+
+- [x] **4.1 vessel profiles** — four classes with documented thresholds and a stated
+      rationale each. METHODS.md §1's anchor is encoded exactly (FRP vallam: Hs < 1.5 m
+      caution, < 2 m avoid) and the others scale by seakeeping. Per-vessel overrides are
+      supported because a well-found boat is not the fleet average.
+- [x] **4.2 boat-relative safety score** — 0-100 with an asymmetric confidence band,
+      weighted over wave height, wind, swell period and squall risk, each normalised
+      against the asking boat's thresholds and scaled by forecast reliability.
+      **Hard-abstains** when a required driver is stale or missing, and when reliability
+      falls below a floor. Reliability can only widen the band or force abstention — it
+      can never raise a score.
+- [x] **4.3 Pareto fishing zones** — returns the trade-off frontier, never one point.
+      Compliance (IMBL, MPA, seasonal ban) is a **hard filter applied before ranking**,
+      not an objective, so an illegal zone is never offered as a cheaper option with a
+      caveat. PFZ evidence decays with advisory age, reaching zero weight after two
+      three-times-weekly issue cycles.
+- [x] **4.4 isochrone-A\*** — A* over a cost surface of `f(VHM0, current projected on
+      heading, wind, depth)`, with an **admissible** heuristic derived from the grid's own
+      cheapest step, so optimality is preserved. Geofenced cells are **removed from the
+      graph, not penalised**: a penalty large enough to "usually" avoid arrest is still a
+      route that crosses the line when the weather is bad enough. Benchmarked against a
+      great-circle baseline, which returns `None` when the straight line would cross a
+      geofence — the naive route is often not merely dearer but illegal.
+- [x] **4.5 anomaly flags** — HAB (chlorophyll multiple *and* an absolute floor, so a
+      spike over a negligible baseline is not a bloom), marine heatwave (the standard
+      5-consecutive-days-above-p90 definition, not an invented one), and possible oil
+      slick (**always low confidence** — ocean colour cannot separate a slick from sun
+      glint; SAR can, and ORCA does not ingest it). Flags say "consistent with", never
+      "there is".
+- [x] **4.6 kernel contract** — one shape for every kernel, with abstention as a
+      first-class result that must explain itself. The model rejects an abstention with a
+      value, a value of `None` without a reason, and an abstention with no detail.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `pnpm verify` | **exit 0** — ruff clean, `mypy --strict` clean (45 files), `tsc` clean |
+| Unit tests | **269 passed** (was 195); 74 new in `services/kernels` |
+| `pytest -m stack` | **53 passed** against the real stack |
+
+Tests cover each vessel class (including a monotonicity check across all four), stale and
+missing-input abstention, Pareto non-domination (no frontier member dominates another),
+geofence-constrained routing, and kernel provenance including fingerprint tampering.
+
+### Two design faults found by the tests and fixed
+
+1. **Freeboard was deciding safety verdicts.** Scaling both class thresholds by the
+   vessel's margin factor moved the score **27.8 points** on a ±10% factor, because the
+   caution-to-avoid band is only ~0.5 m wide for small craft. The margin now adjusts the
+   *hazard* instead, bounding its effect to the margin itself. The docstring had claimed
+   the effect was small; the test proved it was not.
+2. **A test asserted non-optimal routing.** It expected a detour around a 4 m band, but
+   crossing genuinely costs 13.2 against a 13.52 detour — the router was right and the
+   test was wrong. Replaced with two unambiguous cases: an equal-length calm corridor
+   (isolating sea state as the only difference) and a severe band where avoidance really
+   is optimal.
+
+### Not done
+
+- **Reliability is an input, not yet measured.** The kernel consumes a reliability factor;
+  Phase 10.1 is what produces it from CRPS/Brier backtesting. Until then callers pass the
+  registry's declared prior, which is a prior and is labelled as one.
+- **Thresholds are engineering defaults, not regulation.** Only the FRP/trawler rows trace
+  to METHODS.md; the catamaran and gillnetter rows are reasoned from seakeeping and should
+  be reviewed with NIOT or a fisheries officer before the finale.
+- **The zone `catch_signal` is a ranking signal, not a catch prediction**, and nothing
+  downstream should present it as one.
+- Kernels are not yet wired to live evidence — that is Phase 5's orchestration work.
+
+### Next phase
+
+**Phase 5 — agentic orchestration.** LangGraph state machine, the agent roster, planner
+with a cost budget, multi-turn conversation state. This is where the kernels get their
+inputs from the Phase 3 evidence layer, and where the first LLM in the system appears —
+strictly outside the numeric path.
+
 ## Git
 
 Repository initialized 2026-09-18 (`git init -b main`); Phase 0 committed as
