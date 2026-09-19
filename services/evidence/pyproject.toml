@@ -21,6 +21,12 @@ packages = ["orca_evidence"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Mirrors the root pytest.ini. Without it, running `pytest services/evidence/tests`
+# makes rootdir resolve to THIS package, the root addopts no longer apply, and the
+# opt-in suites are collected - including the `model` tests, which then try to download
+# ~2 GB of BGE-M3 weights and look like a hang. An explicit -m on the command line still
+# overrides this, so `pytest -m stack` and `pytest -m model` work as before.
+addopts = "-m 'not stack and not live and not model'"
 markers = [
     "stack: requires the local docker-compose dev stack",
     "model: downloads and runs the real BGE-M3 model",

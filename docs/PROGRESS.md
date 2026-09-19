@@ -487,12 +487,26 @@ documents with no region codes stay admissible everywhere.
 - **Model download TLS.** huggingface.co hits the same incomplete-certificate-chain problem
   as the Indian government endpoints; `BgeM3Embedder` injects the OS trust store before
   loading. Verification is never disabled.
+- **Package-level test deselection (found in the Phase 3-5 audit, 2026-09-19).** Running
+  `pytest services/evidence/tests` made rootdir resolve to that package, so the root
+  `pytest.ini` addopts no longer applied and the opt-in suites were collected — including
+  the `model` tests, which began downloading ~2 GB of weights and looked like a hang. The
+  package's `pyproject.toml` now mirrors the root deselection; an explicit `-m` on the
+  command line still overrides it, so `-m stack` and `-m model` work as before.
 
 ### Not done
 
+- **BGE-M3 has never actually run.** `sentence-transformers` is installed and
+  `BgeM3Embedder` is implemented, and the OS-trust-store fix was confirmed to reach
+  huggingface.co (HTTP 200) — but the ~2 GB of weights were never downloaded in this
+  environment, so the model has not been executed once. **Every passing test uses
+  `DeterministicEmbedder`, which declares `is_semantic = False`.** The `-m model` suite
+  (including a cross-lingual Tamil→English check) exists and is unrun. Nothing may claim
+  BGE-M3 is verified until `pnpm test:model` passes.
 - **No real corpus is loaded.** The ingestion path is built and tested, but no actual PFZ
   advisory, IMD bulletin, NDMA SOP, ban notification or MPA rule has been ingested — PFZ
-  and OSF have no API (Phase 1.6/1.7 scaffolds) and IMD now needs a key.
+  and OSF have no API (Phase 1.6/1.7 scaffolds) and IMD now needs a key. No external
+  corpus or API integration is live.
 - **Retrieval quality is unmeasured.** The tests prove the gates, the fusion and the
   plumbing. They do not prove the results are *good*; that needs the Phase 11.1 golden
   query set against a real corpus.

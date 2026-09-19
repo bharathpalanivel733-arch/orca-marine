@@ -86,8 +86,10 @@ CLASS_THRESHOLDS: dict[VesselClass, ClassThresholds] = {
         avoid_wind_speed_ms=10.0,
         min_comfortable_swell_period_s=7.0,
         rationale=(
-            "Traditional catamaran: minimal freeboard, no self-righting, usually no "
-            "powered return. Held below the FRP vallam thresholds of METHODS.md §1."
+            "ASSUMPTION, not sourced. Reasoned from seakeeping: a traditional catamaran "
+            "has minimal freeboard, no self-righting and usually no powered return, so it "
+            "is held below the FRP vallam thresholds that METHODS.md §1 does source. "
+            "Review with NIOT or a fisheries officer before operational use."
         ),
     ),
     VesselClass.FRP_VALLAM: ClassThresholds(
@@ -104,7 +106,11 @@ CLASS_THRESHOLDS: dict[VesselClass, ClassThresholds] = {
         caution_wind_speed_ms=10.0,
         avoid_wind_speed_ms=15.0,
         min_comfortable_swell_period_s=5.0,
-        rationale="Larger motorised hull with more freeboard and powered return.",
+        rationale=(
+            "ASSUMPTION, not sourced. Reasoned from seakeeping: a larger motorised hull "
+            "with more freeboard and powered return sits between the FRP vallam and "
+            "trawler rows that METHODS.md §1 does source. Review before operational use."
+        ),
     ),
     VesselClass.MECHANIZED_TRAWLER: ClassThresholds(
         caution_wave_height_m=2.5,
