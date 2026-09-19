@@ -407,6 +407,105 @@ actually matters — that the gap can never move a vessel between bands.
 Phase 3 (evidence/RAG) is also unblocked. Phase 2's geometry is now available as the hard
 constraint layer that Phase 4.4's route cost surface needs.
 
+---
+
+## Phase 3 — Structured evidence & RAG (2026-09-19)
+
+### A real bug in Phase 1 was found and fixed
+
+Writing the `as_of` tests exposed a design fault in the Phase 1 schema. The observations
+natural key was `(source, variable, valid_time, lat, lon, depth_key)` — it omitted
+`issued_time`, so when a forecast was **revised the new issue overwrote the old row** and
+the superseded forecast was destroyed.
+
+That makes bitemporal querying impossible, and it would have quietly broken Phase 6.4:
+replaying yesterday's decision would have used today's better forecast, so **every replay
+would have looked correct** and the trust layer would have been worthless. Migration
+`0004_observations_bitemporal.sql` adds `issued_time` to the key. Re-ingesting the *same*
+issue still updates in place — the Phase 1 "no duplicates on re-fetch" guarantee is
+preserved and its test still passes — while a revision is now a new row.
+
+### Delivered
+
+- [x] **3.1 tool/dataset registry** (`registry.py`) — capability metadata per PLAN:
+      variables, coverage bbox, cadence, latency, authority_rank, reliability_prior, cost,
+      licence, plus temporal coverage. `select()` filters on hard constraints and orders
+      deterministically by `(authority_rank, -reliability_prior, cost, dataset_id)`.
+      **Every rejection carries a reason**, so a plan can show why INCOIS was not used.
+      The entries encode verified findings: the INCOIS archives are marked with their real
+      end dates and are rejected for present-day questions but selected for a 2013 one;
+      IMD and CMEMS are rejected when their credentials are absent rather than failing later.
+- [x] **3.2 `as_of` structured querying** (`structured.py`) — `DISTINCT ON` over the
+      bitemporal table returns the latest issue **at or before** `as_of`, never the latest
+      overall. `as_of` is a required argument, not defaulted to now.
+- [x] **3.3 corpus ingestion** (`corpus.py`, migration `0003_corpus.sql`) — documents for
+      PFZ advisories, ocean-state forecasts, IMD warnings, cyclone bulletins, NDMA SOPs,
+      fishing-ban notifications, MPA rules and ABIS bulletins. Provenance fields are
+      **NOT NULL in the schema and required by the model**: a passage that cannot be dated
+      or attributed is refused at ingest rather than retrieved later and unexplainable.
+      Paragraph-aware chunking; re-ingest replaces chunks so a revised advisory leaves no
+      stale passages behind.
+- [x] **3.3 BGE-M3 embeddings** (`embeddings.py`) — `BAAI/bge-m3`, 1024-d, L2-normalised,
+      behind the optional `embeddings` extra. The `vector(1024)` column pins the dimension,
+      so a wrong-sized model cannot be stored (asserted in a test). A
+      `DeterministicEmbedder` exists for hermetic tests and **declares `is_semantic =
+      False`** so it can never be mistaken for the production path.
+- [x] **3.4 hybrid retrieval** (`retrieval.py`) — lexical (`tsvector` + `ts_rank_cd`) and
+      vector (pgvector HNSW, cosine) fused with **reciprocal rank fusion** (k=60). RRF is
+      used rather than a weighted score sum because BM25 and cosine are not on comparable
+      scales; fusing ranks avoids inventing a normalisation.
+- [x] **3.4 hard gates** — the temporal and regional conditions live **inside both SQL
+      queries**, not as a post-filter. A post-filter would let an expired advisory occupy a
+      top-k slot and then vanish; in SQL it is never a candidate. Gates: `issued_time <=
+      as_of` (no future knowledge in a replay), `valid_until` honoured, optional `max_age`,
+      region codes and PostGIS geometry containment.
+- [x] **3.5 provenance on every item** — source, url, issued_time, computed age,
+      authority_rank, licence and provenance id, on both structured and retrieved evidence.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `pnpm verify` | **exit 0** — ruff clean, `mypy --strict` clean (38 files), `tsc` clean |
+| Unit tests | **195 passed** (was 172) |
+| `pytest -m stack` | **36 passed** against real PostgreSQL + PostGIS + pgvector |
+
+Gate tests assert both directions — the admissible document is returned **and** the
+inadmissible one is absent entirely: a 2023 advisory under a 2-day `max_age`, an expired
+advisory past its `valid_until`, an advisory issued after the `as_of` anchor, a Gujarat
+notification for a Palk Strait query, and a polygon-scoped document 900 km away. National
+documents with no region codes stay admissible everywhere.
+
+### Fixed along the way
+
+- **PostgreSQL parameter typing.** Optional filters written as `%(p)s IS NULL` failed with
+  `AmbiguousParameter: could not determine data type of parameter $12`. Every optional
+  filter parameter now carries an explicit cast.
+- **pytest on Windows.** The default `%TEMP%` basetemp failed the whole run with
+  `PermissionError: [WinError 5] ... pytest-current` during symlink cleanup, despite every
+  test passing. `pytest.ini` now sets a repo-local, gitignored `--basetemp`.
+- **Model download TLS.** huggingface.co hits the same incomplete-certificate-chain problem
+  as the Indian government endpoints; `BgeM3Embedder` injects the OS trust store before
+  loading. Verification is never disabled.
+
+### Not done
+
+- **No real corpus is loaded.** The ingestion path is built and tested, but no actual PFZ
+  advisory, IMD bulletin, NDMA SOP, ban notification or MPA rule has been ingested — PFZ
+  and OSF have no API (Phase 1.6/1.7 scaffolds) and IMD now needs a key.
+- **Retrieval quality is unmeasured.** The tests prove the gates, the fusion and the
+  plumbing. They do not prove the results are *good*; that needs the Phase 11.1 golden
+  query set against a real corpus.
+- **`reliability_prior` values are priors, not measurements** — Phase 10.1 replaces them
+  with backtested CRPS/Brier scores.
+- Redis-backed caching and a cross-encoder reranker are not built.
+
+### Next phase
+
+**Phase 4 — decision kernels.** Safety score, Pareto fishing zones, isochrone-A* routing,
+over the record contract from Phase 1, the geometry from Phase 2 and the evidence access
+from Phase 3.
+
 ## Git
 
 Repository initialized 2026-09-18 (`git init -b main`); Phase 0 committed as

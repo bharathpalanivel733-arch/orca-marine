@@ -19,6 +19,13 @@ from orca_schemas.base import (
     ServiceHealth,
     new_run_id,
 )
+from orca_schemas.evidence import (
+    DatasetCapability,
+    DocumentKind,
+    EvidenceProvenance,
+    RetrievalMode,
+    RetrievedPassage,
+)
 from orca_schemas.ingest import (
     CANONICAL_UNITS,
     ArchiveRef,
@@ -43,12 +50,17 @@ __all__ = [
     "Cadence",
     "ComponentHealth",
     "DataQuality",
+    "DatasetCapability",
+    "DocumentKind",
+    "EvidenceProvenance",
     "HealthStatus",
     "MarineVariable",
     "MeasurementKind",
     "ObservationRecord",
     "OrcaModel",
     "ProblemDetail",
+    "RetrievalMode",
+    "RetrievedPassage",
     "RunContext",
     "ServiceHealth",
     "SourceAttempt",

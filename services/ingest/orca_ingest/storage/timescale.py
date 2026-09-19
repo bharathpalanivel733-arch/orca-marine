@@ -6,10 +6,12 @@ Three design points worth stating, because each one protects a downstream guaran
 * **Provenance travels with the row.** ``source``, ``dataset_id``, ``issued_time``,
   ``license`` and ``archive_uri`` are columns, not metadata kept elsewhere. A number in
   this table can always answer "where did you come from and when were you issued".
-* **Writes are idempotent.** The natural key is
-  ``(source, variable, valid_time, lat, lon, depth)``. Re-ingesting the same window —
-  which happens constantly with a cadence-aware cache and with replay — updates rather
-  than duplicates, so a query cannot silently double-count one forecast.
+* **Writes are idempotent, but history is preserved.** The natural key is
+  ``(source, variable, valid_time, issued_time, lat, lon, depth)``. Re-ingesting the same
+  issue updates in place, so re-fetching a window cannot double-count it. A *revised*
+  issue is a new row rather than an overwrite — migration 0004 added ``issued_time`` to
+  the key precisely because the original key destroyed superseded forecasts, which made
+  ``as_of`` querying and deterministic replay impossible.
 * **``issued_time`` is never defaulted.** Staleness is computed from it, so a row that
   lied about its issue time would defeat the entire freshness guarantee.
 """
@@ -34,7 +36,7 @@ INSERT INTO evidence.observations (
     %(issued_time)s, %(source)s, %(dataset_id)s, %(quality)s, %(kind)s, %(license)s,
     %(archive_uri)s
 )
-ON CONFLICT (source, variable, valid_time, lat, lon, depth_key)
+ON CONFLICT (source, variable, valid_time, issued_time, lat, lon, depth_key)
 DO UPDATE SET
     value = EXCLUDED.value,
     unit = EXCLUDED.unit,
@@ -60,8 +62,12 @@ ORDER BY valid_time, lat, lon
 
 def migration_sql() -> str:
     """The schema migration, read from ``infra/db/migrations``."""
-    path = MIGRATIONS_DIR / "0001_observations.sql"
-    return path.read_text(encoding="utf-8")
+    # Applied in order: 0004 makes the table bitemporal and must follow 0001.
+    parts = [
+        (MIGRATIONS_DIR / name).read_text(encoding="utf-8")
+        for name in ("0001_observations.sql", "0004_observations_bitemporal.sql")
+    ]
+    return "\n".join(parts)
 
 
 class TimescaleObservationStore:

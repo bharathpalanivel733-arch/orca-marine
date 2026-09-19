@@ -1,0 +1,38 @@
+[project]
+name = "orca-evidence"
+version = "0.1.0"
+description = "ORCA evidence layer: dataset registry, as_of structured queries, RAG corpus and hybrid retrieval."
+requires-python = ">=3.12"
+dependencies = ["orca-schemas", "psycopg[binary]>=3.2"]
+
+[project.optional-dependencies]
+# BGE-M3 via sentence-transformers. Heavy (torch + ~2 GB of weights on first use), so
+# the evidence core runs without it and tests use the deterministic embedder.
+embeddings = ["sentence-transformers>=3.0"]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.6", "mypy>=1.11"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["orca_evidence"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "stack: requires the local docker-compose dev stack",
+    "model: downloads and runs the real BGE-M3 model",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ANN"]
+ignore = ["ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN"]

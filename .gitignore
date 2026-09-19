@@ -34,3 +34,6 @@ Thumbs.db
 
 # Spike run artifacts (verdicts are recorded in docs/PROGRESS.md)
 artifacts/
+
+# pytest basetemp when the system temp dir is not writable
+.pytest-tmp/
